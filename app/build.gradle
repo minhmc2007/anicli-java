@@ -1,0 +1,98 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.minhmc2077.aniclijava'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.minhmc2077.aniclijava"
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName "1.0.0"
+
+        vectorDrawables {
+            useSupportLibrary true
+        }
+    }
+
+    buildTypes {
+        debug {
+            versionNameSuffix "-debug"
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            universalApk true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    packaging {
+        resources {
+            excludes += [
+                    'META-INF/DEPENDENCIES',
+                    'META-INF/LICENSE',
+                    'META-INF/LICENSE.txt',
+                    'META-INF/NOTICE',
+                    'META-INF/NOTICE.txt',
+                    'META-INF/AL2.0',
+                    'META-INF/LGPL2.1'
+            ]
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+        disable 'UnsafeOptInUsageError'
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.19.1'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation 'androidx.activity:activity:1.13.0'
+    implementation 'androidx.fragment:fragment:1.9.1'
+    implementation 'com.google.android.material:material:1.14.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.2.0'
+
+    // Media3 / ExoPlayer. Networking is provided by Cronet, not OkHttp.
+    implementation 'androidx.media3:media3-exoplayer:1.11.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
+    implementation 'androidx.media3:media3-ui:1.11.1'
+    implementation('androidx.media3:media3-datasource-cronet:1.11.1') {
+        exclude group: 'com.google.android.gms', module: 'play-services-cronet'
+        // The standalone Cronet artifact below provides the same API classes.
+        exclude group: 'org.chromium.net', module: 'cronet-api'
+    }
+
+    // Bundled Cronet (native library included, works without Google Play Services).
+    implementation('org.chromium.net:cronet-bundled:500.1.0') {
+        transitive = false
+    }
+    implementation('org.chromium.net:cronet:500.1.0') {
+        transitive = false
+    }
+}

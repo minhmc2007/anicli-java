@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AniCli Java</string>
+    <string name="app_tagline">Anime, fast and simple.</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_favourites">Favourites</string>
+    <string name="nav_history">History</string>
+
+    <string name="home_title">Trending now</string>
+    <string name="home_subtitle">Most watched anime on HiAnime right now</string>
+    <string name="favourites_title">Favourites</string>
+    <string name="favourites_subtitle">Anime you saved for later</string>
+    <string name="history_title">History</string>
+    <string name="history_subtitle">Pick up where you left off</string>
+
+    <string name="search_hint">Search anime…</string>
+    <string name="search_empty_title">Find something to watch</string>
+    <string name="search_empty_subtitle">Search by title, e.g. “One Piece”.</string>
+    <string name="search_no_results">No results found.</string>
+    <string name="search_button">Search</string>
+
+    <string name="favourites_empty_title">No favourites yet</string>
+    <string name="favourites_empty_subtitle">Tap the heart on an anime page to save it here.</string>
+    <string name="history_empty_title">Nothing watched yet</string>
+    <string name="history_empty_subtitle">Episodes you play will show up here.</string>
+
+    <string name="retry">Retry</string>
+    <string name="clear">Clear</string>
+    <string name="back">Back</string>
+    <string name="close">Close</string>
+    <string name="remove">Remove</string>
+    <string name="loading">Loading…</string>
+    <string name="error_generic">Something went wrong.</string>
+    <string name="error_network">Network error. Check your connection and try again.</string>
+    <string name="error_cloudflare">HiAnime blocked the request. Please try again in a moment.</string>
+    <string name="error_no_sources">No sources found for this episode.</string>
+
+    <string name="detail_episodes">Episodes</string>
+    <string name="detail_play">Play</string>
+    <string name="detail_favourite">Favourite</string>
+    <string name="detail_favourited">Favourited</string>
+    <string name="detail_sub">SUB</string>
+    <string name="detail_dub">DUB</string>
+    <string name="detail_loading_episodes">Loading episodes…</string>
+    <string name="detail_no_episodes">No episodes found.</string>
+    <string name="detail_episode_count">%1$d episodes</string>
+    <string name="detail_score">★ %1$s</string>
+    <string name="detail_episode_short">Ep %1$s</string>
+
+    <string name="player_previous">Previous</string>
+    <string name="player_next">Next</string>
+    <string name="player_quality">Quality</string>
+    <string name="player_mode_sub">SUB</string>
+    <string name="player_mode_dub">DUB</string>
+    <string name="player_episode_title">%1$s • Episode %2$s</string>
+    <string name="player_quality_title">Select quality</string>
+    <string name="player_error_title">Could not play this episode</string>
+    <string name="player_retry">Try again</string>
+    <string name="player_auto">Auto</string>
+    <string name="player_finished">Finished</string>
+
+    <string name="history_episode">Episode %1$s</string>
+    <string name="history_watched">%1$s • %2$s</string>
+    <string name="history_clear_title">Clear history?</string>
+    <string name="history_clear_message">This removes every entry from your watch history.</string>
+    <string name="history_cleared">History cleared</string>
+    <string name="favourite_added">Added to favourites</string>
+    <string name="favourite_removed">Removed from favourites</string>
+    <string name="remove_entry">Remove entry</string>
+
+    <string name="content_description_poster">Anime poster</string>
+    <string name="content_description_favourite">Favourite</string>
+    <string name="content_description_play">Play episode</string>
+    <string name="content_description_delete">Delete</string>
+    <string name="content_description_search">Search</string>
+    <string name="content_description_clear">Clear search</string>
+    <string name="content_description_previous">Previous episode</string>
+    <string name="content_description_next">Next episode</string>
+    <string name="content_description_more">More options</string>
+
+    <string name="powered_by">Trending data from hianime.at</string>
+</resources>
