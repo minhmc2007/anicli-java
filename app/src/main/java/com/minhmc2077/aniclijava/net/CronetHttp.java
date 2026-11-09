@@ -108,7 +108,7 @@ public final class CronetHttp {
         UrlRequest.Builder builder =
                 engine.newUrlRequestBuilder(url, callback, callbackExecutor)
                         .setHttpMethod("GET")
-                        .setPriority(UrlRequest.REQUEST_PRIORITY_HIGH);
+                        .setPriority(UrlRequest.Builder.REQUEST_PRIORITY_HIGH);
 
         if (disableCache) {
             builder.disableCache();

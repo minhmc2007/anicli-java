@@ -124,51 +124,43 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private Fragment createFragment(int itemId) {
-        switch (itemId) {
-            case R.id.nav_search:
-                return new SearchFragment();
-            case R.id.nav_favourites:
-                return new FavouritesFragment();
-            case R.id.nav_history:
-                return new HistoryFragment();
-            case R.id.nav_home:
-            default:
-                return new HomeFragment();
+        if (itemId == R.id.nav_search) {
+            return new SearchFragment();
         }
+        if (itemId == R.id.nav_favourites) {
+            return new FavouritesFragment();
+        }
+        if (itemId == R.id.nav_history) {
+            return new HistoryFragment();
+        }
+        return new HomeFragment();
     }
 
     private String tagFor(int itemId) {
-        switch (itemId) {
-            case R.id.nav_search:
-                return TAG_SEARCH;
-            case R.id.nav_favourites:
-                return TAG_FAVOURITES;
-            case R.id.nav_history:
-                return TAG_HISTORY;
-            case R.id.nav_home:
-            default:
-                return TAG_HOME;
+        if (itemId == R.id.nav_search) {
+            return TAG_SEARCH;
         }
+        if (itemId == R.id.nav_favourites) {
+            return TAG_FAVOURITES;
+        }
+        if (itemId == R.id.nav_history) {
+            return TAG_HISTORY;
+        }
+        return TAG_HOME;
     }
 
     private void updateToolbar(int itemId) {
         if (getSupportActionBar() == null) {
             return;
         }
-        switch (itemId) {
-            case R.id.nav_search:
-                getSupportActionBar().setSubtitle(R.string.nav_search);
-                break;
-            case R.id.nav_favourites:
-                getSupportActionBar().setSubtitle(R.string.nav_favourites);
-                break;
-            case R.id.nav_history:
-                getSupportActionBar().setSubtitle(R.string.nav_history);
-                break;
-            case R.id.nav_home:
-            default:
-                getSupportActionBar().setSubtitle(R.string.home_title);
-                break;
+        if (itemId == R.id.nav_search) {
+            getSupportActionBar().setSubtitle(R.string.nav_search);
+        } else if (itemId == R.id.nav_favourites) {
+            getSupportActionBar().setSubtitle(R.string.nav_favourites);
+        } else if (itemId == R.id.nav_history) {
+            getSupportActionBar().setSubtitle(R.string.nav_history);
+        } else {
+            getSupportActionBar().setSubtitle(R.string.home_title);
         }
     }
 }
