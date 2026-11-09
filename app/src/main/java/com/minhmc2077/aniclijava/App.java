@@ -59,8 +59,9 @@ public final class App extends Application {
                 .enableHttp2(true)
                 .enableQuic(true)
                 .enableBrotli(true)
-                .enableHttpCache(CronetEngine.Builder.HTTP_CACHE_DISK, 64L * 1024L * 1024L)
+                // setStoragePath must precede enableHttpCache(HTTP_CACHE_DISK).
                 .setStoragePath(storage.getAbsolutePath())
+                .enableHttpCache(CronetEngine.Builder.HTTP_CACHE_DISK, 64L * 1024L * 1024L)
                 .setUserAgent(CronetHttp.USER_AGENT)
                 .build();
 
