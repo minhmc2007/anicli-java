@@ -400,7 +400,8 @@ public final class PlayerActivity extends AppCompatActivity {
     }
 
     private void onPlaybackEnded() {
-        savePosition();
+        // Finished: clear the resume point before advancing.
+        App.get().history().updatePosition(animeId, episode.number, 0L);
         if (episodeIndex >= 0 && episodeIndex + 1 < episodes.size()) {
             playEpisode(episodes.get(episodeIndex + 1));
         } else {
@@ -484,7 +485,12 @@ public final class PlayerActivity extends AppCompatActivity {
             return;
         }
         long position = player.getCurrentPosition();
-        if (position <= 0) {
+        long duration = player.getDuration();
+        // Don't resume from the final 5 seconds.
+        if (duration > 0 && position >= duration - 5000L) {
+            position = 0L;
+        }
+        if (position < 0) {
             return;
         }
         App.get().history().updatePosition(animeId, episode.number, position);

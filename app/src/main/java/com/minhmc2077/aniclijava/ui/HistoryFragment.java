@@ -60,12 +60,17 @@ public final class HistoryFragment extends Fragment implements Refreshable {
         adapter = new HistoryAdapter(App.get().imageLoader(), new HistoryAdapter.Listener() {
             @Override
             public void onHistoryClick(HistoryEntry entry) {
-                PlayerActivity.start(requireContext(), entry);
+                if (isAdded()) {
+                    PlayerActivity.start(requireContext(), entry);
+                }
             }
 
             @Override
             public void onRemove(HistoryEntry entry) {
                 App.get().history().remove(entry.animeId);
+                if (!isAdded()) {
+                    return;
+                }
                 load();
                 Ui.toast(requireContext(), getString(R.string.remove_entry));
             }
@@ -124,8 +129,11 @@ public final class HistoryFragment extends Fragment implements Refreshable {
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(R.string.clear, (dialog, which) -> {
                     App.get().history().clear();
-                    load();
-                    Ui.toast(requireContext(), getString(R.string.history_cleared));
+                    // The dialog can outlive the fragment; requireContext() throws after detach.
+                    if (isAdded()) {
+                        load();
+                        Ui.toast(requireContext(), getString(R.string.history_cleared));
+                    }
                 })
                 .show();
     }

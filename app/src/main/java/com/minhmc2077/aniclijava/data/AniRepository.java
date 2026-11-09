@@ -20,6 +20,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -171,7 +172,10 @@ public final class AniRepository {
         }
 
         List<Episode> list = parseEpisodes(html);
-        episodeCache.put(animeId, list);
+        // Don't cache empty parses.
+        if (!list.isEmpty()) {
+            episodeCache.put(animeId, list);
+        }
         return list;
     }
 
@@ -218,7 +222,10 @@ public final class AniRepository {
 
         String referer = origin(embedUrl);
         String malId = HtmlText.group(MAL_ID, embedUrl, 1);
-        String embedHtml = fetch(embedUrl);
+        // The embed host rejects requests without a Referer (same as ani-cli).
+        Map<String, String> embedHeaders = new HashMap<>();
+        embedHeaders.put("Referer", BASE + "/");
+        String embedHtml = fetch(embedUrl, embedHeaders);
         String blob = HtmlText.group(BLOB, embedHtml, 1);
         if (blob == null || blob.isEmpty()) {
             throw new IOException("Stream blob not found");
@@ -255,7 +262,10 @@ public final class AniRepository {
             throw new IOException("Master playlist not found");
         }
 
-        String playlist = fetch(masterUrl, Collections.singletonMap("Referer", referer));
+        Map<String, String> playlistHeaders = new HashMap<>();
+        playlistHeaders.put("Referer", referer);
+        playlistHeaders.put("Origin", referer.substring(0, Math.max(0, referer.length() - 1)));
+        String playlist = fetch(masterUrl, playlistHeaders);
         List<Quality> qualities = parseQualities(playlist, masterUrl);
         String audioUrl = parseAudio(playlist, masterUrl);
 

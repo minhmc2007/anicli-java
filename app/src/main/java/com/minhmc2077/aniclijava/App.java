@@ -101,13 +101,30 @@ public final class App extends Application {
 
     public <T> void async(Callable<T> task, Consumer<T> onSuccess, Consumer<Exception> onError) {
         io.execute(() -> {
+            T result;
             try {
-                T result = task.call();
-                main.post(() -> onSuccess.accept(result));
-            } catch (Exception error) {
-                main.post(() -> onError.accept(error));
+                result = task.call();
+            } catch (Throwable error) {
+                // Catch Throwable so a Cronet linkage/native error cannot kill
+                // the pool thread and take down the process.
+                Exception wrapped = error instanceof Exception
+                        ? (Exception) error
+                        : new RuntimeException(error);
+                Log.e(TAG, "Background task failed", error);
+                main.post(() -> deliver(onError, wrapped));
+                return;
             }
+            main.post(() -> deliver(onSuccess, result));
         });
+    }
+
+    private <T> void deliver(Consumer<T> callback, T value) {
+        try {
+            callback.accept(value);
+        } catch (RuntimeException error) {
+            // A callback touching a dead view must not crash the app.
+            Log.e(TAG, "Callback failed", error);
+        }
     }
 
     public String friendlyError(Throwable error) {

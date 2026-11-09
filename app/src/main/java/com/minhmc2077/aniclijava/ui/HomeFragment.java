@@ -144,6 +144,8 @@ public final class HomeFragment extends Fragment implements Refreshable {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        // Don't keep the in-flight flag across view recreation.
+        loading = false;
         if (recycler != null) {
             recycler.setAdapter(null);
         }

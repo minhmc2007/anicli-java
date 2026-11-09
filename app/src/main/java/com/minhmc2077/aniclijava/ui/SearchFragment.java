@@ -86,7 +86,11 @@ public final class SearchFragment extends Fragment implements Refreshable {
 
             @Override
             public void afterTextChanged(Editable s) {
-                clearButton.setVisibility(s.length() > 0 ? View.VISIBLE : View.GONE);
+                // The watcher can fire after onDestroyView(); use a local copy.
+                ImageButton button = clearButton;
+                if (button != null) {
+                    button.setVisibility(s.length() > 0 ? View.VISIBLE : View.GONE);
+                }
             }
         });
 
@@ -213,6 +217,8 @@ public final class SearchFragment extends Fragment implements Refreshable {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        // Let later searches run even if a request was in flight.
+        loading = false;
         if (recycler != null) {
             recycler.setAdapter(null);
         }

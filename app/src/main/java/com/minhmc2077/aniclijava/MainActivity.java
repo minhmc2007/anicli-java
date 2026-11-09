@@ -61,8 +61,11 @@ public final class MainActivity extends AppCompatActivity {
                 if (bottomNavigation.getSelectedItemId() != R.id.nav_home) {
                     bottomNavigation.setSelectedItemId(R.id.nav_home);
                 } else {
+                    // Disable for this dispatch only; restore afterwards so back
+                    // still works on other tabs.
                     setEnabled(false);
                     getOnBackPressedDispatcher().onBackPressed();
+                    setEnabled(true);
                 }
             }
         });
@@ -113,7 +116,12 @@ public final class MainActivity extends AppCompatActivity {
             }
         }
         transaction.show(target);
-        transaction.commitNow();
+        // commitNow() throws after onSaveInstanceState(); fall back in that case.
+        if (manager.isStateSaved()) {
+            transaction.commitAllowingStateLoss();
+        } else {
+            transaction.commitNow();
+        }
 
         updateToolbar(itemId);
         invalidateOptionsMenu();

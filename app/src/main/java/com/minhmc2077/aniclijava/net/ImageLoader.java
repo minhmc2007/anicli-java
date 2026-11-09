@@ -78,7 +78,13 @@ public final class ImageLoader {
         view.setImageResource(R.drawable.ic_image_placeholder);
 
         io.execute(() -> {
-            Bitmap bitmap = loadBitmap(url);
+            Bitmap bitmap;
+            try {
+                bitmap = loadBitmap(url);
+            } catch (Throwable error) {
+                // A decode/cache failure must not kill the shared IO thread.
+                return;
+            }
             if (bitmap == null) {
                 return;
             }
