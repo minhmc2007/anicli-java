@@ -6,6 +6,8 @@ import org.chromium.net.UrlRequest;
 import org.chromium.net.UrlResponseInfo;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -105,6 +107,120 @@ public final class CronetHttp {
             }
         };
 
+        UrlRequest request = requestBuilder(url, callback, headers, disableCache).build();
+        request.start();
+
+        try {
+            if (!latch.await(30, TimeUnit.SECONDS)) {
+                request.cancel();
+                throw new IOException("Request timed out");
+            }
+        } catch (InterruptedException interrupted) {
+            request.cancel();
+            Thread.currentThread().interrupt();
+            throw new IOException("Request interrupted", interrupted);
+        }
+
+        if (failure[0] != null) {
+            throw failure[0];
+        }
+        return new Response(status[0], body.toByteArray());
+    }
+
+    public int download(String url, Map<String, String> headers, File target) throws IOException {
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists()) {
+            //noinspection ResultOfMethodCallIgnored
+            parent.mkdirs();
+        }
+
+        final FileOutputStream output = new FileOutputStream(target);
+        final int[] status = {0};
+        final IOException[] failure = {null};
+        final CountDownLatch latch = new CountDownLatch(1);
+
+        UrlRequest.Callback callback = new UrlRequest.Callback() {
+            @Override
+            public void onRedirectReceived(UrlRequest request, UrlResponseInfo info,
+                                           String newLocationUrl) throws IOException {
+                request.followRedirect();
+            }
+
+            @Override
+            public void onResponseStarted(UrlRequest request, UrlResponseInfo info)
+                    throws IOException {
+                status[0] = info.getHttpStatusCode();
+                request.read(ByteBuffer.allocateDirect(64 * 1024));
+            }
+
+            @Override
+            public void onReadCompleted(UrlRequest request, UrlResponseInfo info,
+                                        ByteBuffer buffer) throws IOException {
+                buffer.flip();
+                try {
+                    if (buffer.hasRemaining()) {
+                        byte[] chunk = new byte[buffer.remaining()];
+                        buffer.get(chunk);
+                        output.write(chunk);
+                    }
+                } catch (IOException error) {
+                    failure[0] = error;
+                    latch.countDown();
+                    request.cancel();
+                    return;
+                }
+                buffer.clear();
+                request.read(buffer);
+            }
+
+            @Override
+            public void onSucceeded(UrlRequest request, UrlResponseInfo info) {
+                latch.countDown();
+            }
+
+            @Override
+            public void onFailed(UrlRequest request, UrlResponseInfo info, CronetException error) {
+                failure[0] = new IOException("Cronet request failed: " + error.getMessage(), error);
+                latch.countDown();
+            }
+
+            @Override
+            public void onCanceled(UrlRequest request, UrlResponseInfo info) {
+                latch.countDown();
+            }
+        };
+
+        UrlRequest request = requestBuilder(url, callback, headers, true).build();
+        request.start();
+
+        try {
+            if (!latch.await(120, TimeUnit.SECONDS)) {
+                request.cancel();
+                throw new IOException("Download timed out");
+            }
+        } catch (InterruptedException interrupted) {
+            request.cancel();
+            Thread.currentThread().interrupt();
+            throw new IOException("Download interrupted", interrupted);
+        } finally {
+            output.close();
+        }
+
+        if (failure[0] != null) {
+            //noinspection ResultOfMethodCallIgnored
+            target.delete();
+            throw failure[0];
+        }
+        if (status[0] < 200 || status[0] >= 300) {
+            //noinspection ResultOfMethodCallIgnored
+            target.delete();
+            throw new IOException("Download HTTP " + status[0]);
+        }
+        return status[0];
+    }
+
+    private UrlRequest.Builder requestBuilder(String url, UrlRequest.Callback callback,
+                                              Map<String, String> headers, boolean disableCache) {
         UrlRequest.Builder builder =
                 engine.newUrlRequestBuilder(url, callback, callbackExecutor)
                         .setHttpMethod("GET")
@@ -131,24 +247,6 @@ public final class CronetHttp {
         }
         builder.addHeader("Accept-Language", "en-US,en;q=0.9");
         builder.addHeader("User-Agent", USER_AGENT);
-
-        UrlRequest request = builder.build();
-        request.start();
-
-        try {
-            if (!latch.await(30, TimeUnit.SECONDS)) {
-                request.cancel();
-                throw new IOException("Request timed out");
-            }
-        } catch (InterruptedException interrupted) {
-            request.cancel();
-            Thread.currentThread().interrupt();
-            throw new IOException("Request interrupted", interrupted);
-        }
-
-        if (failure[0] != null) {
-            throw failure[0];
-        }
-        return new Response(status[0], body.toByteArray());
+        return builder;
     }
 }

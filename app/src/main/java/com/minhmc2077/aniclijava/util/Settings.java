@@ -12,6 +12,7 @@ public final class Settings {
     private static final String PREFS = "settings";
     private static final String KEY_ACCENT = "accent";
     private static final String KEY_THEME = "theme";
+    private static final String KEY_UPDATE_CHECK = "update_check";
 
     public static final String ACCENT_BLUE = "blue";
     public static final String ACCENT_INDIGO = "indigo";
@@ -69,6 +70,14 @@ public final class Settings {
 
     public static void applyNightMode(Context context) {
         AppCompatDelegate.setDefaultNightMode(themeMode(context));
+    }
+
+    public static boolean updateCheckEnabled(Context context) {
+        return prefs(context).getBoolean(KEY_UPDATE_CHECK, true);
+    }
+
+    public static void setUpdateCheckEnabled(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(KEY_UPDATE_CHECK, enabled).apply();
     }
 
     public static void applyAccent(Activity activity) {

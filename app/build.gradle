@@ -2,6 +2,15 @@ plugins {
     id 'com.android.application'
 }
 
+def versionFromSource = { ->
+    def source = file('src/main/java/com/minhmc2077/aniclijava/Version.java')
+    def matcher = source.text =~ /NAME\s*=\s*"([^"]+)"/
+    if (!matcher.find()) {
+        throw new GradleException('Version.java does not define NAME')
+    }
+    matcher.group(1)
+}
+
 android {
     namespace 'com.minhmc2077.aniclijava'
     compileSdk 36
@@ -22,7 +31,7 @@ android {
         minSdk 26
         targetSdk 36
         versionCode 1
-        versionName "1.0.0"
+        versionName versionFromSource()
 
         vectorDrawables {
             useSupportLibrary true
@@ -35,6 +44,7 @@ android {
             versionNameSuffix "-debug"
         }
         release {
+            signingConfig signingConfigs.debug
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

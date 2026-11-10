@@ -76,6 +76,10 @@ public final class App extends Application {
         return cronetEngine;
     }
 
+    public CronetHttp http() {
+        return http;
+    }
+
     public ExecutorService io() {
         return io;
     }

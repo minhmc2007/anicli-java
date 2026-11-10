@@ -20,6 +20,8 @@ import com.minhmc2077.aniclijava.ui.HomeFragment;
 import com.minhmc2077.aniclijava.ui.Refreshable;
 import com.minhmc2077.aniclijava.ui.SearchFragment;
 import com.minhmc2077.aniclijava.ui.SettingsActivity;
+import com.minhmc2077.aniclijava.ui.UpdatePrompt;
+import com.minhmc2077.aniclijava.util.Settings;
 import com.minhmc2077.aniclijava.util.Ui;
 
 public final class MainActivity extends BaseActivity {
@@ -73,6 +75,10 @@ public final class MainActivity extends BaseActivity {
                 }
             }
         });
+
+        if (savedInstanceState == null && Settings.updateCheckEnabled(this)) {
+            findViewById(R.id.root).post(() -> UpdatePrompt.check(this, false));
+        }
     }
 
     @Override

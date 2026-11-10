@@ -6,6 +6,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -16,6 +17,7 @@ import androidx.appcompat.app.AppCompatDelegate;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.minhmc2077.aniclijava.R;
+import com.minhmc2077.aniclijava.Version;
 import com.minhmc2077.aniclijava.util.Settings;
 import com.minhmc2077.aniclijava.util.Ui;
 
@@ -36,6 +38,16 @@ public final class SettingsActivity extends BaseActivity {
         setUpThemeGroup();
 
         findViewById(R.id.github_button).setOnClickListener(v -> openRepository());
+
+        ((TextView) findViewById(R.id.about_version)).setText(Version.NAME);
+
+        CheckBox autoCheck = findViewById(R.id.auto_update_check);
+        autoCheck.setChecked(Settings.updateCheckEnabled(this));
+        autoCheck.setOnCheckedChangeListener((buttonView, isChecked) ->
+                Settings.setUpdateCheckEnabled(this, isChecked));
+
+        findViewById(R.id.check_updates_button)
+                .setOnClickListener(v -> UpdatePrompt.check(this, true));
     }
 
     private void buildAccentRow() {

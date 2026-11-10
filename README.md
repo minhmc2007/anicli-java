@@ -1,70 +1,109 @@
 # AniCli Java
 
-A small, fast, native Android client for the same HiAnime scraping flow used by
-[`ani-cli`](https://github.com/pystardust/ani-cli). The app is written in pure
-Java (no Kotlin) and uses **Cronet** for HTTP instead of OkHttp.
+AniCli Java is an Android client for the HiAnime scraping flow used by
+[`ani-cli`](https://github.com/pystardust/ani-cli). It has a compact,
+Android 7-era interface and keeps all app data on the device.
 
-- Package: `com.minhmc2077.aniclijava`
-- App name: **AniCli Java**
-- Min SDK: 26 (Android 8.0)
-- Target SDK: 36
-- UI: simple YouTube-like Material 3 interface with dynamic color support
-- Icon: adaptive Material You play-logo icon with monochrome support
+| | |
+| --- | --- |
+| Package | `com.minhmc2077.aniclijava` |
+| Minimum Android | 8.0 (API 26) |
+| Target Android | API 36 |
+| UI | Android 7-era flat design, Roboto, light/dark/system themes |
+
+## Download
+
+Install the latest universal APK from
+[Releases](https://github.com/minhmc2007/anicli-java/releases/latest).
+
+Release builds use a fixed project keystore and a constant version code, so a
+build can be installed over another without uninstalling the app, including an
+older release.
 
 ## Features
 
-- **Home** — trending anime scraped from `https://hianime.at/home`
-- **Search** — search HiAnime by title
-- **Favourites** — saved anime, stored locally in `SharedPreferences`
-- **History** — one resume entry per anime, with watch position
-- **Detail** — poster, score, genres, synopsis, SUB/DUB switch, episode grid
-- **Player** — ExoPlayer with Cronet networking, quality selection, previous/next,
-  auto-next, subtitles, and resume-from-history
+- **Home** — trending anime from HiAnime.
+- **Search** — search by title.
+- **Favourites** — save anime locally.
+- **History** — resume the last watched episode and position.
+- **Detail** — poster, score, genres, synopsis, SUB/DUB switch, and an episode grid.
+- **Player** — quality selection, subtitles, previous/next episode, auto-next, and resume.
+- **Seek gestures** — double-tap the left half of the player to go back 5 seconds, or the right half to go forward 5 seconds.
+- **Settings** — accent color, light/dark/system theme, app version, GitHub link, and update checks.
+- **Updates** — checks the latest GitHub release on startup when enabled, shows the release notes, downloads the APK, opens the system installer, and removes cached APKs once the installed version is current.
+
+## Interface
+
+The app uses an Android 7-era flat design: Roboto, a solid app bar, 2dp corners,
+flat surfaces, and divider lines instead of elevated cards. There is no dynamic
+color or Material You theming.
+
+The default accent is classic blue. Settings → Appearance also offers indigo,
+teal, green, red, and orange, plus Light, Dark, and System themes.
 
 ## How it works
 
-The scraping logic is a direct port of the shell script:
+1. Trending cards are parsed from the HiAnime home page.
+2. Search results come from the search page, and episode lists from the episode API.
+3. The ZokoAnime embed blob is base64-decoded and deobfuscated to obtain the stream.
+4. The HLS master playlist is parsed for qualities, optional audio, and subtitles.
+5. Playback uses Media3/ExoPlayer with a bundled Cronet engine for HTTP.
 
-1. Trending cards are parsed from the `#anime-trending` section of the home page.
-2. Search results are parsed from `flw-item` cards on the search page.
-3. Episodes come from `/api/theme/episode/list/<numeric-id>`.
-4. The ZokoAnime server hash is read from `/api/theme/episode/servers?episodeId=...`.
-5. The embed blob is base64-decoded and XOR-deobfuscated with `otaku-embed-v1`.
-6. The HLS master playlist is parsed for quality variants, optional audio, and subtitles.
+Favourites, history, and settings are stored in `SharedPreferences`. There is no
+account, server, or analytics service.
 
-All requests go through a bundled Cronet engine. No OkHttp, Retrofit, Coil, or
-Glide is used.
+## Versioning and releases
+
+The app version lives in
+[`Version.java`](app/src/main/java/com/minhmc2077/aniclijava/Version.java):
+
+```java
+public static final String NAME = "0.0.1";
+```
+
+Gradle reads this value for the APK `versionName`, so the Java constant is the
+single source of truth. The `versionCode` stays at `1`; this is what allows a
+release to replace any other build signed with the same key.
+
+Release tags use the same value as `Version.NAME` (for example `0.0.1`). The app
+compares its own version with the latest release tag to decide whether an update
+is available.
+
+### GitHub Actions
+
+| Workflow | Trigger | What it does |
+| --- | --- | --- |
+| `build.yml` | Push to `main`, manual | Builds debug and release APKs, prints the signing key, and uploads debug artifacts. |
+| `release.yml` | Manual, `version` input required | Aborts if `version` does not match `Version.java`. Otherwise builds the release APK and creates the GitHub release and tag. |
+| `bump-version.yml` | Manual, `version` input required | Replaces `Version.NAME`, builds the release, creates the release and tag, then opens a pull request with the version bump. |
+
+The release and bump workflows fail if the version is not in `MAJOR.MINOR.PATCH`
+form or if the release already exists.
 
 ## Building
 
-The project is built on **GitHub Actions** only. Push to `main` or run the
-`Build APK` workflow manually:
-
-```bash
-gh workflow run build.yml
-gh run watch
-```
-
-The debug APK artifacts are uploaded as `anicli-java-debug` and include the ABI
-splits plus a universal APK.
-
-To build from a machine with the Android SDK and JDK 17:
+Requirements: JDK 17 and Android SDK 36.
 
 ```bash
 ./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
 ```
+
+CI artifacts include per-ABI debug APKs and a universal debug APK. GitHub
+releases publish `anicli-java-<version>.apk`.
 
 ## Project layout
 
-```
+```text
 app/src/main/java/com/minhmc2077/aniclijava/
-├── App.java                 Application, Cronet engine, stores, async helper
-├── MainActivity.java        Bottom navigation shell
+├── App.java                 Application, Cronet engine, async helper
+├── MainActivity.java        Bottom navigation shell and update check
+├── Version.java             App version and version comparison
 ├── data/                    Scraping repository and local stores
-├── model/                   Anime, Episode, StreamInfo, HistoryEntry
-├── net/                     Cronet HTTP wrapper and image loader
-├── ui/                      Activities, fragments, adapters
-└── util/                    HTML, time, and UI helpers
+├── model/                   Anime, Episode, StreamInfo, ReleaseInfo
+├── net/                     Cronet HTTP, GitHub releases, image loader
+├── ui/                      Activities, fragments, adapters, settings, update prompt
+└── util/                    HTML, time, settings, and UI helpers
 ```
 
 ## Disclaimer
@@ -72,7 +111,7 @@ app/src/main/java/com/minhmc2077/aniclijava/
 This project is an unofficial client and is not affiliated with HiAnime or
 ani-cli. It only displays publicly available pages from the site. Respect the
 laws and terms of service that apply to you. The app does not host or distribute
-any video content.
+video content.
 
 ## License
 

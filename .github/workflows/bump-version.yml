@@ -1,0 +1,100 @@
+name: Bump version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New version, for example 0.0.2. The release and PR use this value.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bump-version-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ inputs.version }}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $version"
+            exit 1
+          fi
+          if gh release view "$version" >/dev/null 2>&1; then
+            echo "Release $version already exists"
+            exit 1
+          fi
+
+      - name: Update Version.java
+        run: |
+          sed -i -E 's/(NAME[[:space:]]*=[[:space:]]*)"[^"]*"/\1"${{ inputs.version }}"/' \
+            app/src/main/java/com/minhmc2077/aniclijava/Version.java
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Prepare APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-universal-release.apk \
+            "dist/anicli-java-${{ inputs.version }}.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: anicli-java-${{ inputs.version }}
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Commit and push branch
+        run: |
+          branch="bump-version-${{ inputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add app/src/main/java/com/minhmc2077/aniclijava/Version.java
+          git commit -m "Bump version to ${{ inputs.version }}"
+          git push -u origin "$branch"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.version }}" \
+            "dist/anicli-java-${{ inputs.version }}.apk" \
+            --target "$(git rev-parse HEAD)" \
+            --title "AniCli Java ${{ inputs.version }}" \
+            --generate-notes
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "bump-version-${{ inputs.version }}" \
+            --title "Bump version to ${{ inputs.version }}" \
+            --body "Updates Version.java to ${{ inputs.version }} after the release build."
