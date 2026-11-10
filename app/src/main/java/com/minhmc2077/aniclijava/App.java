@@ -5,7 +5,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
-import com.google.android.material.color.DynamicColors;
 import com.minhmc2077.aniclijava.data.AniRepository;
 import com.minhmc2077.aniclijava.data.FavouriteStore;
 import com.minhmc2077.aniclijava.data.HistoryStore;
@@ -43,7 +42,6 @@ public final class App extends Application {
     public void onCreate() {
         super.onCreate();
         instance = this;
-        DynamicColors.applyToActivitiesIfAvailable(this);
 
         io = Executors.newFixedThreadPool(4);
         cronetCallbacks = Executors.newCachedThreadPool();

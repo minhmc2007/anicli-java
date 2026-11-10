@@ -9,14 +9,16 @@
 
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
+        style="@style/Widget.AniCli.Toolbar"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorSurface"
+        android:layout_height="wrap_content"
+        android:elevation="0dp"
+        android:minHeight="?attr/actionBarSize"
         app:subtitle="@string/home_title"
-        app:subtitleTextAppearance="@style/TextAppearance.Material3.BodySmall"
-        app:subtitleTextColor="?attr/colorOnSurfaceVariant"
+        app:subtitleTextAppearance="@style/TextAppearance.AniCli.BodySmall"
+        app:subtitleTextColor="?attr/colorOnPrimary"
         app:title="@string/app_name"
-        app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge" />
+        app:titleTextAppearance="@style/TextAppearance.AniCli.TitleLarge" />
 
     <FrameLayout
         android:id="@+id/fragment_container"
@@ -24,12 +26,21 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider" />
+
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?attr/colorSurface"
+        android:elevation="0dp"
+        app:itemActiveIndicatorStyle="@style/Widget.AniCli.BottomNav.ActiveIndicator"
         app:itemIconTint="@color/bottom_nav_item"
+        app:itemTextAppearanceActive="@style/TextAppearance.AniCli.NavLabel"
+        app:itemTextAppearanceInactive="@style/TextAppearance.AniCli.NavLabel"
         app:itemTextColor="@color/bottom_nav_item"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/bottom_nav_menu" />

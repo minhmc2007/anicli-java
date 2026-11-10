@@ -1,26 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#C62828</color>
+    <!-- Android 7-era classic blue. Fixed colors: no dynamic/Material You theming. -->
+    <color name="primary">#1976D2</color>
+    <color name="primary_dark">#0D47A1</color>
     <color name="onPrimary">#FFFFFF</color>
-    <color name="primaryContainer">#FFDAD6</color>
-    <color name="onPrimaryContainer">#410002</color>
-    <color name="secondary">#775651</color>
+    <color name="primaryContainer">#E3F2FD</color>
+    <color name="onPrimaryContainer">#0D47A1</color>
+
+    <color name="secondary">#455A64</color>
     <color name="onSecondary">#FFFFFF</color>
-    <color name="secondaryContainer">#FFDAD6</color>
-    <color name="onSecondaryContainer">#2C1512</color>
-    <color name="tertiary">#705C2E</color>
+    <color name="secondaryContainer">#ECEFF1</color>
+    <color name="onSecondaryContainer">#263238</color>
+
+    <color name="tertiary">#0288D1</color>
     <color name="onTertiary">#FFFFFF</color>
-    <color name="background">#FFFBFF</color>
-    <color name="onBackground">#201A1A</color>
-    <color name="surface">#FFFBFF</color>
-    <color name="onSurface">#201A1A</color>
-    <color name="surfaceVariant">#F5DDDA</color>
-    <color name="onSurfaceVariant">#534341</color>
-    <color name="outline">#857371</color>
-    <color name="error">#BA1A1A</color>
+
+    <color name="background">#FFFFFF</color>
+    <color name="onBackground">#212121</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="onSurface">#212121</color>
+    <color name="surfaceVariant">#F5F5F5</color>
+    <color name="onSurfaceVariant">#616161</color>
+    <color name="outline">#BDBDBD</color>
+    <color name="divider">#E0E0E0</color>
+
+    <color name="error">#D32F2F</color>
     <color name="onError">#FFFFFF</color>
     <color name="scrim">#000000</color>
+
     <color name="youtube_red">#FF0033</color>
     <color name="player_background">#000000</color>
-    <color name="rank_badge">#CC0000</color>
+    <color name="rank_badge">#D32F2F</color>
+    <color name="navigation_bar">#000000</color>
 </resources>

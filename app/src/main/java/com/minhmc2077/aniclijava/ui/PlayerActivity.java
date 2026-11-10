@@ -121,7 +121,8 @@ public final class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Ui.setupEdgeToEdge(this);
+        // Black player surface: keep light system bar icons.
+        Ui.setupEdgeToEdge(this, false);
         setContentView(R.layout.activity_player);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 

@@ -58,10 +58,11 @@ public final class AnimeDetailActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         Ui.setupEdgeToEdge(this);
         setContentView(R.layout.activity_anime_detail);
-        Ui.applyVerticalInsets(findViewById(R.id.root));
 
         toolbar = findViewById(R.id.toolbar);
         recycler = findViewById(R.id.recycler);
+        Ui.applyTopInset(toolbar);
+        Ui.applyBottomInset(recycler);
 
         toolbar.setNavigationOnClickListener(v -> finish());
 

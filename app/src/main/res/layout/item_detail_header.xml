@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="12dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -14,8 +14,8 @@
 
         <com.google.android.material.imageview.ShapeableImageView
             android:id="@+id/detail_poster"
-            android:layout_width="116dp"
-            android:layout_height="174dp"
+            android:layout_width="100dp"
+            android:layout_height="150dp"
             android:background="@drawable/bg_poster_placeholder"
             android:contentDescription="@string/content_description_poster"
             android:scaleType="centerCrop"
@@ -24,7 +24,7 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="12dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -42,8 +42,8 @@
                 android:id="@+id/detail_meta"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?attr/textAppearanceBodySmall"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 tools:text="TV • 1180 episodes" />
 
@@ -51,8 +51,8 @@
                 android:id="@+id/detail_score"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?attr/textAppearanceTitleSmall"
                 android:textColor="?attr/colorPrimary"
                 android:visibility="gone"
                 tools:text="★ 8.72" />
@@ -61,7 +61,7 @@
                 android:id="@+id/detail_genres"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="4dp"
                 android:ellipsize="end"
                 android:maxLines="3"
                 android:textAppearance="?attr/textAppearanceBodySmall"
@@ -76,7 +76,7 @@
         android:id="@+id/detail_description"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:ellipsize="end"
         android:maxLines="8"
         android:textAppearance="?attr/textAppearanceBodyMedium"
@@ -87,12 +87,13 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/detail_play"
+            style="@style/Widget.AniCli.Button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -102,10 +103,10 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/detail_favourite"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            style="@style/Widget.AniCli.Button.Outlined"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="6dp"
             android:text="@string/detail_favourite"
             app:icon="@drawable/ic_favorite_border"
             app:iconGravity="textStart" />
@@ -115,13 +116,13 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="20dp"
-        android:background="?attr/colorOutline" />
+        android:layout_marginTop="16dp"
+        android:background="@color/divider" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -142,27 +143,27 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/mode_sub"
-                style="@style/Widget.Material3.Button.OutlinedButton"
+                style="@style/Widget.AniCli.Button.Outlined"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:insetTop="0dp"
                 android:insetBottom="0dp"
                 android:minWidth="0dp"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:text="@string/detail_sub"
                 android:textSize="12sp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/mode_dub"
-                style="@style/Widget.Material3.Button.OutlinedButton"
+                style="@style/Widget.AniCli.Button.Outlined"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:insetTop="0dp"
                 android:insetBottom="0dp"
                 android:minWidth="0dp"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:text="@string/detail_dub"
                 android:textSize="12sp" />
         </com.google.android.material.button.MaterialButtonToggleGroup>
@@ -173,7 +174,7 @@
         android:id="@+id/episodes_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:text="@string/detail_loading_episodes"
         android:textAppearance="?attr/textAppearanceBodySmall"
         android:textColor="?attr/colorOnSurfaceVariant" />
@@ -183,7 +184,7 @@
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="4dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="6dp"
         android:indeterminate="true"
         android:visibility="gone" />
 
@@ -191,7 +192,7 @@
         android:id="@+id/episodes_error"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:textAppearance="?attr/textAppearanceBodySmall"
         android:textColor="?attr/colorError"
         android:visibility="gone" />

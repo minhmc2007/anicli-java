@@ -35,7 +35,6 @@ public final class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         Ui.setupEdgeToEdge(this);
         setContentView(R.layout.activity_main);
-        Ui.applyVerticalInsets(findViewById(R.id.root));
 
         toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -45,6 +44,9 @@ public final class MainActivity extends AppCompatActivity {
         }
 
         bottomNavigation = findViewById(R.id.bottom_nav);
+        Ui.applyTopInset(toolbar);
+        Ui.applyBottomInset(bottomNavigation);
+
         int startTab = savedInstanceState == null
                 ? R.id.nav_home
                 : bottomNavigation.getSelectedItemId();

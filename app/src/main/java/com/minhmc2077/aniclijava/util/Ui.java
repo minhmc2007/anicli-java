@@ -19,6 +19,13 @@ public final class Ui {
     }
 
     public static void setupEdgeToEdge(Activity activity) {
+        boolean night = (activity.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        setupEdgeToEdge(activity, !night);
+    }
+
+    /** Draw behind system bars; callers apply insets to their bar views. */
+    public static void setupEdgeToEdge(Activity activity, boolean darkNavigationIcons) {
         Window window = activity.getWindow();
         WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(Color.TRANSPARENT);
@@ -26,10 +33,9 @@ public final class Ui {
 
         WindowInsetsControllerCompat controller =
                 WindowCompat.getInsetsController(window, window.getDecorView());
-        boolean night = (activity.getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        controller.setAppearanceLightStatusBars(!night);
-        controller.setAppearanceLightNavigationBars(!night);
+        // App bars are blue/black, so status bar icons always stay light.
+        controller.setAppearanceLightStatusBars(false);
+        controller.setAppearanceLightNavigationBars(darkNavigationIcons);
     }
 
     public static void applyVerticalInsets(View view) {
@@ -52,6 +58,18 @@ public final class Ui {
         ViewCompat.setOnApplyWindowInsetsListener(view, (v, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(left, top + bars.top, right, bottom);
+            return insets;
+        });
+    }
+
+    public static void applyBottomInset(View view) {
+        final int left = view.getPaddingLeft();
+        final int top = view.getPaddingTop();
+        final int right = view.getPaddingRight();
+        final int bottom = view.getPaddingBottom();
+        ViewCompat.setOnApplyWindowInsetsListener(view, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(left, top, right, bottom + bars.bottom);
             return insets;
         });
     }
