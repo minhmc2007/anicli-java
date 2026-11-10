@@ -194,6 +194,12 @@ public final class PlayerActivity extends BaseActivity {
         playerView.setControllerAutoShow(true);
         playerView.setControllerShowTimeoutMs(3000);
         playerView.setShowSubtitleButton(true);
+        playerView.setControllerVisibilityListener(new PlayerView.ControllerVisibilityListener() {
+            @Override
+            public void onVisibilityChanged(int visibility) {
+                topBar.setVisibility(visibility);
+            }
+        });
 
         dataSourceFactory = new CronetDataSource.Factory(
                 App.get().cronetEngine(), App.get().cronetCallbacks());
