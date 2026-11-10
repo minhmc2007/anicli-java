@@ -89,7 +89,6 @@ public final class AniRepository {
     private static final Pattern BLOB = Pattern.compile("window\\.__P=\"([^\"]*)\"");
     private static final Pattern MAL_ID = Pattern.compile("/mal/([0-9]+)/");
     private static final Pattern RESOLUTION = Pattern.compile("RESOLUTION=\\d+x(\\d+)");
-    private static final Pattern URI_ATTR = Pattern.compile("URI=\"([^\"]+)\"");
 
     private final CronetHttp http;
     private final Map<String, List<Episode>> episodeCache = new ConcurrentHashMap<>();
@@ -267,9 +266,8 @@ public final class AniRepository {
         playlistHeaders.put("Origin", referer.substring(0, Math.max(0, referer.length() - 1)));
         String playlist = fetch(masterUrl, playlistHeaders);
         List<Quality> qualities = parseQualities(playlist, masterUrl);
-        String audioUrl = parseAudio(playlist, masterUrl);
 
-        return new StreamInfo(masterUrl, audioUrl, subtitleUrl, referer, malId, qualities);
+        return new StreamInfo(masterUrl, subtitleUrl, referer, malId, qualities);
     }
 
     // ---------------------------------------------------------------------
@@ -493,23 +491,6 @@ public final class AniRepository {
             deduped.put(quality.url, quality);
         }
         return new ArrayList<>(deduped.values());
-    }
-
-    private static String parseAudio(String playlist, String masterUrl) {
-        String[] lines = playlist.split("\\r?\\n");
-        for (String line : lines) {
-            if (!line.startsWith("#EXT-X-MEDIA:")) {
-                continue;
-            }
-            if (!line.contains("TYPE=AUDIO") || !line.contains("DEFAULT=YES")) {
-                continue;
-            }
-            Matcher uri = URI_ATTR.matcher(line);
-            if (uri.find()) {
-                return resolveUrl(masterUrl, uri.group(1));
-            }
-        }
-        return null;
     }
 
     // ---------------------------------------------------------------------

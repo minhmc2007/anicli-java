@@ -56,21 +56,55 @@ jobs:
       - name: Build release APK
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Prepare APK
+      - name: Prepare APKs
         run: |
           mkdir -p dist
-          apk=$(find app/build/outputs/apk/release -name '*-universal-release.apk' -print -quit)
-          if [ -z "$apk" ]; then
+          version="${{ inputs.version }}"
+          for abi in armeabi-v7a arm64-v8a x86 x86_64 universal; do
+            src="app/build/outputs/apk/release/app-${abi}-release.apk"
+            if [ -f "$src" ]; then
+              cp "$src" "dist/anicli-java-${version}-${abi}.apk"
+            fi
+          done
+          if ! ls dist/*.apk >/dev/null 2>&1; then
             apk=$(find app/build/outputs/apk/release -name '*.apk' -print -quit)
+            test -n "$apk"
+            cp "$apk" "dist/anicli-java-${version}-universal.apk"
           fi
-          test -n "$apk"
-          cp "$apk" "dist/anicli-java-${{ inputs.version }}.apk"
 
-      - name: Upload APK
+      - name: Upload universal APK
         uses: actions/upload-artifact@v4
         with:
-          name: anicli-java-${{ inputs.version }}
-          path: dist/*.apk
+          name: anicli-java-${{ inputs.version }}-universal
+          path: dist/anicli-java-${{ inputs.version }}-universal.apk
+          if-no-files-found: error
+
+      - name: Upload armeabi-v7a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: anicli-java-${{ inputs.version }}-armeabi-v7a
+          path: dist/anicli-java-${{ inputs.version }}-armeabi-v7a.apk
+          if-no-files-found: error
+
+      - name: Upload arm64-v8a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: anicli-java-${{ inputs.version }}-arm64-v8a
+          path: dist/anicli-java-${{ inputs.version }}-arm64-v8a.apk
+          if-no-files-found: error
+
+      - name: Upload x86 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: anicli-java-${{ inputs.version }}-x86
+          path: dist/anicli-java-${{ inputs.version }}-x86.apk
+          if-no-files-found: error
+
+      - name: Upload x86_64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: anicli-java-${{ inputs.version }}-x86_64
+          path: dist/anicli-java-${{ inputs.version }}-x86_64.apk
           if-no-files-found: error
 
       - name: Commit and push branch
@@ -87,10 +121,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ inputs.version }}" \
-            "dist/anicli-java-${{ inputs.version }}.apk" \
+          version="${{ inputs.version }}"
+          assets=("dist/anicli-java-${version}-universal.apk")
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            assets+=("dist/anicli-java-${version}-${abi}.apk")
+          done
+          gh release create "$version" "${assets[@]}" \
             --target "$(git rev-parse HEAD)" \
-            --title "AniCli Java ${{ inputs.version }}" \
+            --title "AniCli Java $version" \
             --generate-notes
 
       - name: Open pull request

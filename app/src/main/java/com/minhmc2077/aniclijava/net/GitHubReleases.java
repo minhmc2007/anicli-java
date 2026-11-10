@@ -37,6 +37,7 @@ public final class GitHubReleases {
             }
 
             String apkUrl = null;
+            String fallbackUrl = null;
             JSONArray assets = release.optJSONArray("assets");
             if (assets != null) {
                 for (int i = 0; i < assets.length(); i++) {
@@ -44,11 +45,22 @@ public final class GitHubReleases {
                     if (asset == null) {
                         continue;
                     }
-                    if (asset.optString("name").endsWith(".apk")) {
-                        apkUrl = asset.optString("browser_download_url");
+                    String name = asset.optString("name");
+                    if (!name.endsWith(".apk")) {
+                        continue;
+                    }
+                    String url = asset.optString("browser_download_url");
+                    if (fallbackUrl == null) {
+                        fallbackUrl = url;
+                    }
+                    if (name.contains("universal")) {
+                        apkUrl = url;
                         break;
                     }
                 }
+            }
+            if (apkUrl == null) {
+                apkUrl = fallbackUrl;
             }
             if (apkUrl == null || apkUrl.isEmpty()) {
                 throw new IOException("Release has no APK");

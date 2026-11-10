@@ -89,8 +89,13 @@ Requirements: JDK 17 and Android SDK 36.
 ./gradlew :app:assembleRelease
 ```
 
-CI artifacts include per-ABI debug APKs and a universal debug APK. GitHub
-releases publish `anicli-java-<version>.apk`.
+CI uploads each debug APK as its own artifact (`anicli-java-debug-<abi>`), so
+the ABI builds are not bundled into one archive. GitHub always wraps downloaded
+artifacts in a zip, but each artifact now contains a single APK.
+
+GitHub releases publish the universal `anicli-java-<version>-universal.apk`
+plus per-ABI APKs for `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`. The
+in-app updater downloads the universal build.
 
 ## Project layout
 

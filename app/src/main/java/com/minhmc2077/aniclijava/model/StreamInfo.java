@@ -8,16 +8,14 @@ import java.util.List;
  */
 public final class StreamInfo {
     public final String masterUrl;
-    public final String audioUrl;
     public final String subtitleUrl;
     public final String referer;
     public final String malId;
     public final List<Quality> qualities;
 
-    public StreamInfo(String masterUrl, String audioUrl, String subtitleUrl, String referer,
+    public StreamInfo(String masterUrl, String subtitleUrl, String referer,
                       String malId, List<Quality> qualities) {
         this.masterUrl = masterUrl;
-        this.audioUrl = audioUrl;
         this.subtitleUrl = subtitleUrl;
         this.referer = referer;
         this.malId = malId;

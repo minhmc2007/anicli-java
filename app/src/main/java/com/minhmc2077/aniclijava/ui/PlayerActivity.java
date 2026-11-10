@@ -23,12 +23,11 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.datasource.cronet.CronetDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
-import androidx.media3.exoplayer.source.MergingMediaSource;
 import androidx.media3.ui.PlayerView;
 
 import com.google.android.material.button.MaterialButton;
@@ -323,20 +322,29 @@ public final class PlayerActivity extends BaseActivity {
         }
         resumePositionMs = startMs;
 
-        player.setMediaSource(buildMediaSource(info, quality));
+        player.setTrackSelectionParameters(selectionFor(quality));
+        player.setMediaSource(buildMediaSource(info));
         player.prepare();
         player.setPlayWhenReady(true);
-        player.setTrackSelectionParameters(
-                player.getTrackSelectionParameters().buildUpon()
-                        .setPreferredTextLanguage("en")
-                        .setSelectUndeterminedTextLanguage(true)
-                        .build());
 
         App.get().history().upsert(animeId, animeTitle, posterUrl, episode.number,
                 episode.id, mode, startMs);
     }
 
-    private MediaSource buildMediaSource(StreamInfo info, Quality quality) {
+    private TrackSelectionParameters selectionFor(Quality quality) {
+        TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters()
+                .buildUpon()
+                .setPreferredTextLanguage("en")
+                .setSelectUndeterminedTextLanguage(true);
+        if (quality != null && quality.height > 0) {
+            builder.setMaxVideoSize(Integer.MAX_VALUE, quality.height);
+        } else {
+            builder.setMaxVideoSize(Integer.MAX_VALUE, Integer.MAX_VALUE);
+        }
+        return builder.build();
+    }
+
+    private MediaSource buildMediaSource(StreamInfo info) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", CronetHttp.USER_AGENT);
         if (!TextUtils.isEmpty(info.referer)) {
@@ -344,8 +352,11 @@ public final class PlayerActivity extends BaseActivity {
         }
         dataSourceFactory.setDefaultRequestProperties(headers);
 
+        // Play the master playlist so ExoPlayer owns variant and audio-rendition
+        // selection. Loading a variant directly and merging its audio as a
+        // second, independently-timed source can desynchronise playback.
         MediaItem.Builder item = new MediaItem.Builder()
-                .setUri(quality.url)
+                .setUri(info.masterUrl)
                 .setMimeType(MimeTypes.APPLICATION_M3U8);
         if (!TextUtils.isEmpty(info.subtitleUrl)) {
             MediaItem.SubtitleConfiguration subtitle =
@@ -358,15 +369,7 @@ public final class PlayerActivity extends BaseActivity {
             item.setSubtitleConfigurations(Collections.singletonList(subtitle));
         }
 
-        MediaSource video = new DefaultMediaSourceFactory(dataSourceFactory)
-                .createMediaSource(item.build());
-
-        if (!TextUtils.isEmpty(info.audioUrl) && !quality.url.equals(info.masterUrl)) {
-            MediaSource audio = new HlsMediaSource.Factory(dataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(info.audioUrl));
-            return new MergingMediaSource(video, audio);
-        }
-        return video;
+        return new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(item.build());
     }
 
     private void toggleMode() {
@@ -394,12 +397,12 @@ public final class PlayerActivity extends BaseActivity {
             if (selectedQuality != null && quality.url.equals(selectedQuality.url)) {
                 return true;
             }
-            long position = player == null ? 0L : Math.max(0L, player.getCurrentPosition());
-            pendingSeekMs = position;
             preferredHeight = quality.height;
             selectedQuality = quality;
             updateQualityButton();
-            attachSource(stream, quality);
+            if (player != null) {
+                player.setTrackSelectionParameters(selectionFor(quality));
+            }
             return true;
         });
         menu.show();
