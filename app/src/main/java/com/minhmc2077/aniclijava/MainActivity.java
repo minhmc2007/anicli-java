@@ -146,9 +146,22 @@ public final class MainActivity extends BaseActivity {
 
         updateToolbar(itemId);
         invalidateOptionsMenu();
+        refreshCurrentTab();
+    }
 
-        if (target instanceof Refreshable) {
-            ((Refreshable) target).onShown();
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshCurrentTab();
+    }
+
+    private void refreshCurrentTab() {
+        if (bottomNavigation == null) {
+            return;
+        }
+        Fragment current = getSupportFragmentManager().findFragmentByTag(tagFor(currentTab));
+        if (current instanceof Refreshable) {
+            ((Refreshable) current).onShown();
         }
     }
 
