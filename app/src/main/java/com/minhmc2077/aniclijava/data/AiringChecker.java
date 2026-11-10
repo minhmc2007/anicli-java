@@ -4,9 +4,11 @@ import android.content.Context;
 
 import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.model.Anime;
+import com.minhmc2077.aniclijava.model.AnimeDetail;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.model.HistoryEntry;
 import com.minhmc2077.aniclijava.ui.AiringNotifications;
+import com.minhmc2077.aniclijava.util.AiringStatus;
 import com.minhmc2077.aniclijava.util.EpisodeNumbers;
 
 import java.io.IOException;
@@ -29,6 +31,7 @@ public final class AiringChecker {
      */
     public static final long CHECK_INTERVAL_MS = 10L * 60L * 1000L;
     private static final long UI_REFRESH_TTL_MS = 60L * 1000L;
+    private static final long STATUS_TTL_MS = 6L * 60L * 60L * 1000L;
     private static final AtomicBoolean RUNNING = new AtomicBoolean();
 
     private AiringChecker() {
@@ -44,7 +47,7 @@ public final class AiringChecker {
         HistoryStore history = App.get().history();
         for (Anime anime : App.get().favourites().getAll()) {
             HistoryEntry watched = history.latestForAnime(anime.id);
-            if (watched == null) {
+            if (watched == null || !airing.isAiring(anime.id)) {
                 continue;
             }
             String latest = airing.latest(anime.id);
@@ -80,6 +83,16 @@ public final class AiringChecker {
             }
 
             for (Anime anime : tracked.values()) {
+                boolean airingNow;
+                try {
+                    airingNow = isAiringNow(airing, anime);
+                } catch (IOException error) {
+                    continue;
+                }
+                if (!airingNow) {
+                    // Finished and unreleased titles never gain episodes.
+                    continue;
+                }
                 List<Episode> episodes;
                 try {
                     episodes = App.get().repository().episodes(anime.id, true);
@@ -124,6 +137,16 @@ public final class AiringChecker {
                         callback.accept(badges());
                     }
                 });
+    }
+
+    private static boolean isAiringNow(AiringStore airing, Anime anime) throws IOException {
+        long now = System.currentTimeMillis();
+        long checked = airing.airingCheckedAt(anime.id);
+        if (checked <= 0L || now < checked || now - checked >= STATUS_TTL_MS) {
+            AnimeDetail detail = App.get().repository().detail(anime.id, true);
+            airing.setAiring(anime.id, AiringStatus.isAiring(detail.status));
+        }
+        return airing.isAiring(anime.id);
     }
 
     private static void notifyIfNew(Context context, AiringStore airing, HistoryStore history,

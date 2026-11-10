@@ -179,7 +179,11 @@ public final class AniRepository {
     }
 
     public AnimeDetail detail(String animeId) throws IOException {
-        AnimeDetail cached = detailCache.get(animeId);
+        return detail(animeId, false);
+    }
+
+    public AnimeDetail detail(String animeId, boolean force) throws IOException {
+        AnimeDetail cached = force ? null : detailCache.get(animeId);
         if (cached != null) {
             return cached;
         }

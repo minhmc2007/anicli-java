@@ -21,10 +21,13 @@ public final class AiringStore {
     private static final String PREFS = "anicli_airing";
     private static final String KEY_SUBSCRIPTIONS = "subscriptions";
     private static final String KEY_LATEST = "latest";
+    private static final String KEY_AIRING = "airing";
     private static final String KEY_LAST_REFRESH = "last_refresh";
     private static final String FIELD_TITLE = "title";
     private static final String FIELD_POSTER = "poster";
     private static final String FIELD_LAST_NOTIFIED = "last_notified";
+    private static final String FIELD_IS_AIRING = "is_airing";
+    private static final String FIELD_CHECKED = "checked";
 
     private final SharedPreferences preferences;
 
@@ -121,6 +124,31 @@ public final class AiringStore {
         }
     }
 
+    public synchronized boolean isAiring(String animeId) {
+        JSONObject entry = animeId == null ? null : readAiring().optJSONObject(animeId);
+        return entry != null && entry.optBoolean(FIELD_IS_AIRING, false);
+    }
+
+    public synchronized long airingCheckedAt(String animeId) {
+        JSONObject entry = animeId == null ? null : readAiring().optJSONObject(animeId);
+        return entry == null ? 0L : entry.optLong(FIELD_CHECKED, 0L);
+    }
+
+    public synchronized void setAiring(String animeId, boolean airing) {
+        if (animeId == null) {
+            return;
+        }
+        JSONObject airingState = readAiring();
+        try {
+            JSONObject entry = new JSONObject();
+            entry.put(FIELD_IS_AIRING, airing);
+            entry.put(FIELD_CHECKED, System.currentTimeMillis());
+            airingState.put(animeId, entry);
+            writeAiring(airingState);
+        } catch (JSONException ignored) {
+        }
+    }
+
     public synchronized long lastRefresh() {
         return preferences.getLong(KEY_LAST_REFRESH, 0L);
     }
@@ -137,6 +165,10 @@ public final class AiringStore {
         return read(KEY_LATEST);
     }
 
+    private JSONObject readAiring() {
+        return read(KEY_AIRING);
+    }
+
     private JSONObject read(String key) {
         try {
             return new JSONObject(preferences.getString(key, "{}"));
@@ -151,5 +183,9 @@ public final class AiringStore {
 
     private void writeLatest(JSONObject value) {
         preferences.edit().putString(KEY_LATEST, value.toString()).apply();
+    }
+
+    private void writeAiring(JSONObject value) {
+        preferences.edit().putString(KEY_AIRING, value.toString()).apply();
     }
 }

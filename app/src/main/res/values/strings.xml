@@ -54,6 +54,7 @@
     <string name="airing_turn_off">Disable airing alerts</string>
     <string name="airing_enabled">Airing alerts on</string>
     <string name="airing_disabled">Airing alerts off</string>
+    <string name="airing_only_for_airing">Airing alerts are only available for currently airing anime.</string>
     <string name="airing_permission_denied">Airing alerts are on, but notifications are blocked in system settings.</string>
     <string name="airing_new_episode">New episode</string>
     <string name="airing_channel_name">Airing episodes</string>

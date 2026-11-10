@@ -20,9 +20,11 @@ import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.data.AiringChecker;
 import com.minhmc2077.aniclijava.model.Anime;
+import com.minhmc2077.aniclijava.model.AnimeDetail;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.ui.adapter.DetailAdapter;
 import com.minhmc2077.aniclijava.util.AiringAlarm;
+import com.minhmc2077.aniclijava.util.AiringStatus;
 import com.minhmc2077.aniclijava.util.Ui;
 
 import java.util.ArrayList;
@@ -44,6 +46,7 @@ public final class AnimeDetailActivity extends BaseActivity {
     private RecyclerView recycler;
     private DetailAdapter adapter;
     private Anime anime;
+    private AnimeDetail detail;
     private final List<Episode> episodes = new ArrayList<>();
 
     private boolean episodesLoading;
@@ -161,6 +164,7 @@ public final class AnimeDetailActivity extends BaseActivity {
                 () -> App.get().repository().detail(animeId),
                 detail -> {
                     if (!destroyed && adapter != null) {
+                        this.detail = detail;
                         adapter.setDetail(detail);
                         if (!TextUtils.isEmpty(detail.title)) {
                             toolbar.setTitle(detail.title);
@@ -210,6 +214,10 @@ public final class AnimeDetailActivity extends BaseActivity {
 
     private void toggleAiringAlerts() {
         boolean enabled = !App.get().airing().isEnabled(animeId);
+        if (enabled && detail != null && !AiringStatus.isAiring(detail.status)) {
+            Ui.toast(this, getString(R.string.airing_only_for_airing));
+            return;
+        }
         App.get().airing().setEnabled(anime, enabled);
         if (adapter != null) {
             adapter.setNotifyEnabled(enabled);

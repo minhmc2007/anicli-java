@@ -61,9 +61,11 @@ account, server, or analytics service.
 
 Airing alerts live behind the megaphone button on an anime page. When enabled,
 the app compares the latest upstream episode with the last watched episode and
-posts a local notification when something new appears. The check runs from an
-inexact repeating alarm about every 10 minutes, plus once on app start. Android
-may delay the alarm in Doze, so the interval is not guaranteed.
+posts a local notification when something new appears. Only anime currently
+marked as airing upstream are polled; finished and unreleased titles are skipped.
+The check runs from an inexact repeating alarm about every 10 minutes, plus once
+on app start. Android may delay the alarm in Doze, so the interval is not
+guaranteed.
 
 Notifications need the Android 13+ notification permission. The app asks for it
 when alerts are enabled and only uses it for these local airing messages. The
