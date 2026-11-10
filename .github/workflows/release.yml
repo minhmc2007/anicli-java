@@ -52,8 +52,12 @@ jobs:
       - name: Prepare APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-universal-release.apk \
-            "dist/anicli-java-${{ inputs.version }}.apk"
+          apk=$(find app/build/outputs/apk/release -name '*-universal-release.apk' -print -quit)
+          if [ -z "$apk" ]; then
+            apk=$(find app/build/outputs/apk/release -name '*.apk' -print -quit)
+          fi
+          test -n "$apk"
+          cp "$apk" "dist/anicli-java-${{ inputs.version }}.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
