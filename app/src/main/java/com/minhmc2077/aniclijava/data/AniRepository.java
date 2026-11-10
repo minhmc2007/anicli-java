@@ -78,6 +78,12 @@ public final class AniRepository {
     private static final Pattern DETAIL_STATUS = Pattern.compile(
             "<span class=\"item-head\">Status:</span>\\s*<span class=\"name\">([^<]*)</span>",
             Pattern.DOTALL);
+    private static final Pattern DETAIL_STATS = Pattern.compile(
+            "<div class=\"film-stats\">(.*?)<div class=\"clearfix\"></div>", Pattern.DOTALL);
+    private static final Pattern DETAIL_SUB_COUNT = Pattern.compile(
+            "<div class=\"tick-item tick-sub\">\\s*(?:<[^>]+>\\s*)*(\\d+)", Pattern.DOTALL);
+    private static final Pattern DETAIL_DUB_COUNT = Pattern.compile(
+            "<div class=\"tick-item tick-dub\">\\s*(?:<[^>]+>\\s*)*(\\d+)", Pattern.DOTALL);
     private static final Pattern DETAIL_GENRES = Pattern.compile(
             "<span class=\"item-head\">Genres:</span>(.*?)</div>", Pattern.DOTALL);
     private static final Pattern ANCHOR = Pattern.compile("<a [^>]*>([^<]+)</a>", Pattern.DOTALL);
@@ -400,6 +406,9 @@ public final class AniRepository {
         String description = HtmlText.unescape(HtmlText.group(DETAIL_DESC, html, 1));
         String score = HtmlText.clean(HtmlText.group(DETAIL_SCORE, html, 1));
         String status = HtmlText.clean(HtmlText.group(DETAIL_STATUS, html, 1));
+        String stats = HtmlText.group(DETAIL_STATS, html, 1);
+        int subCount = intGroup(DETAIL_SUB_COUNT, stats == null ? "" : stats);
+        int dubCount = intGroup(DETAIL_DUB_COUNT, stats == null ? "" : stats);
 
         StringBuilder genres = new StringBuilder();
         String genreBlock = HtmlText.group(DETAIL_GENRES, html, 1);
@@ -417,7 +426,8 @@ public final class AniRepository {
             }
         }
 
-        return new AnimeDetail(title, poster, description, score, status, genres.toString());
+        return new AnimeDetail(title, poster, description, score, status, genres.toString(),
+                subCount, dubCount);
     }
 
     private String findZokoHash(String serversHtml, String mode) {

@@ -50,6 +50,7 @@ public final class AnimeDetailActivity extends BaseActivity {
     private final List<Episode> episodes = new ArrayList<>();
 
     private boolean episodesLoading;
+    private boolean episodesLoaded;
     private boolean destroyed;
 
     public static void start(Context context, Anime anime, @Nullable String episodeNumber) {
@@ -147,6 +148,7 @@ public final class AnimeDetailActivity extends BaseActivity {
                 if (adapter != null) {
                     adapter.setDub(dub);
                 }
+                updateVisibleEpisodes();
             }
         });
         recycler.setAdapter(adapter);
@@ -169,6 +171,7 @@ public final class AnimeDetailActivity extends BaseActivity {
                         if (!TextUtils.isEmpty(detail.title)) {
                             toolbar.setTitle(detail.title);
                         }
+                        updateVisibleEpisodes();
                     }
                 },
                 error -> {
@@ -188,12 +191,13 @@ public final class AnimeDetailActivity extends BaseActivity {
                 () -> App.get().repository().episodes(animeId),
                 list -> {
                     episodesLoading = false;
+                    episodesLoaded = true;
                     if (destroyed || adapter == null) {
                         return;
                     }
                     episodes.clear();
                     episodes.addAll(list);
-                    adapter.submitEpisodes(list);
+                    updateVisibleEpisodes();
                 },
                 error -> {
                     episodesLoading = false;
@@ -210,6 +214,18 @@ public final class AnimeDetailActivity extends BaseActivity {
             return;
         }
         PlayerActivity.start(this, anime, episode, mode);
+    }
+
+    private void updateVisibleEpisodes() {
+        if (adapter == null || episodesLoading || !episodesLoaded) {
+            return;
+        }
+        List<Episode> visible = episodes;
+        if ("dub".equals(mode) && detail != null) {
+            int dubbed = Math.min(detail.dubCount, episodes.size());
+            visible = new ArrayList<>(episodes.subList(0, dubbed));
+        }
+        adapter.submitEpisodes(visible);
     }
 
     private void toggleAiringAlerts() {
