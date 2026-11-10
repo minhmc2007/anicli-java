@@ -113,6 +113,9 @@
 
     <string name="player_seek_back">-5s</string>
     <string name="player_seek_forward">+5s</string>
+    <string name="player_brightness">Brightness</string>
+    <string name="player_volume">Volume</string>
+    <string name="player_level">%1$s %2$d%%</string>
 
     <string name="update_title">Update available</string>
     <string name="update_message">Version %1$s is available. Download and install it now?</string>

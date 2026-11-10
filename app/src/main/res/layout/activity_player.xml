@@ -118,6 +118,22 @@
         android:visibility="gone"
         tools:text="+5s" />
 
+    <TextView
+        android:id="@+id/level_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_seek_hint"
+        android:paddingStart="18dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="18dp"
+        android:paddingBottom="8dp"
+        android:textColor="@android:color/white"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        tools:text="Brightness 70%" />
+
     <LinearLayout
         android:id="@+id/state"
         android:layout_width="wrap_content"

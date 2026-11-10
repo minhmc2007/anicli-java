@@ -6,10 +6,12 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.WindowManager;
 import android.widget.ImageButton;
 import android.widget.PopupMenu;
@@ -57,6 +59,11 @@ public final class PlayerActivity extends BaseActivity {
     private static final long SAVE_INTERVAL_MS = 5000L;
     private static final long SEEK_STEP_MS = 5000L;
     private static final long SEEK_HINT_MS = 700L;
+    private static final long LEVEL_HINT_MS = 800L;
+    private static final float BRIGHTNESS_MIN = 0.01f;
+    private static final int SWIPE_NONE = 0;
+    private static final int SWIPE_BRIGHTNESS = 1;
+    private static final int SWIPE_VOLUME = 2;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable saveProgress = new Runnable() {
@@ -82,12 +89,24 @@ public final class PlayerActivity extends BaseActivity {
     private TextView stateText;
     private MaterialButton retryButton;
     private TextView seekIndicator;
+    private TextView levelIndicator;
     private GestureDetector seekGestureDetector;
     private final Runnable hideSeekHint = () -> {
         if (seekIndicator != null) {
             seekIndicator.setVisibility(View.GONE);
         }
     };
+    private final Runnable hideLevelHint = () -> {
+        if (levelIndicator != null) {
+            levelIndicator.setVisibility(View.GONE);
+        }
+    };
+
+    private int touchSlop;
+    private int swipeMode = SWIPE_NONE;
+    private float swipeStartX;
+    private float swipeStartY;
+    private float swipeStartLevel;
 
     private String animeId;
     private String animeTitle;
@@ -147,9 +166,10 @@ public final class PlayerActivity extends BaseActivity {
         stateText = findViewById(R.id.state_text);
         retryButton = findViewById(R.id.retry_button);
         seekIndicator = findViewById(R.id.seek_indicator);
+        levelIndicator = findViewById(R.id.level_indicator);
 
         Ui.applyTopInset(topBar);
-        setUpSeekGestures();
+        setUpGestures();
 
         animeId = getIntent().getStringExtra(EXTRA_ANIME_ID);
         animeTitle = getIntent().getStringExtra(EXTRA_TITLE);
@@ -502,7 +522,8 @@ public final class PlayerActivity extends BaseActivity {
         }
     }
 
-    private void setUpSeekGestures() {
+    private void setUpGestures() {
+        touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
         seekGestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDown(@NonNull MotionEvent e) {
@@ -518,8 +539,93 @@ public final class PlayerActivity extends BaseActivity {
         });
         playerView.setOnTouchListener((view, event) -> {
             seekGestureDetector.onTouchEvent(event);
-            return false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    swipeMode = SWIPE_NONE;
+                    swipeStartX = event.getX();
+                    swipeStartY = event.getY();
+                    return false;
+                case MotionEvent.ACTION_MOVE:
+                    if (swipeMode == SWIPE_NONE) {
+                        float dx = event.getX() - swipeStartX;
+                        float dy = event.getY() - swipeStartY;
+                        if (Math.abs(dy) <= touchSlop || Math.abs(dy) <= Math.abs(dx)) {
+                            return false;
+                        }
+                        swipeMode = swipeStartX < view.getWidth() / 2f
+                                ? SWIPE_BRIGHTNESS
+                                : SWIPE_VOLUME;
+                        swipeStartLevel = swipeMode == SWIPE_BRIGHTNESS
+                                ? currentWindowBrightness()
+                                : (player == null ? 1f : player.getVolume());
+                    }
+                    applySwipe(event.getY());
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    boolean adjusting = swipeMode != SWIPE_NONE;
+                    swipeMode = SWIPE_NONE;
+                    if (adjusting) {
+                        handler.removeCallbacks(hideLevelHint);
+                        handler.postDelayed(hideLevelHint, LEVEL_HINT_MS);
+                        return true;
+                    }
+                    return false;
+                default:
+                    return false;
+            }
         });
+    }
+
+    private void applySwipe(float currentY) {
+        float travel = (swipeStartY - currentY) / Math.max(1f, playerView.getHeight() * 0.7f);
+        float level = clamp(swipeStartLevel + travel, 0f, 1f);
+        if (swipeMode == SWIPE_BRIGHTNESS) {
+            level = Math.max(BRIGHTNESS_MIN, level);
+            WindowManager.LayoutParams params = getWindow().getAttributes();
+            params.screenBrightness = level;
+            getWindow().setAttributes(params);
+            showLevelHint(R.string.player_brightness, level);
+        } else if (swipeMode == SWIPE_VOLUME) {
+            if (player == null) {
+                return;
+            }
+            // Player volume only affects this app's playback, so no audio
+            // permission is needed and the device volume is left untouched.
+            player.setVolume(level);
+            showLevelHint(R.string.player_volume, level);
+        }
+    }
+
+    private float currentWindowBrightness() {
+        WindowManager.LayoutParams params = getWindow().getAttributes();
+        if (params.screenBrightness >= 0f) {
+            return params.screenBrightness;
+        }
+        try {
+            int system = Settings.System.getInt(
+                    getContentResolver(), Settings.System.SCREEN_BRIGHTNESS);
+            return clamp(system / 255f, BRIGHTNESS_MIN, 1f);
+        } catch (Settings.SettingNotFoundException ignored) {
+            return 0.5f;
+        }
+    }
+
+    private void showLevelHint(int labelRes, float level) {
+        if (levelIndicator == null) {
+            return;
+        }
+        int percent = Math.round(clamp(level, 0f, 1f) * 100f);
+        if (seekIndicator != null) {
+            seekIndicator.setVisibility(View.GONE);
+        }
+        levelIndicator.setText(getString(R.string.player_level, getString(labelRes), percent));
+        levelIndicator.setVisibility(View.VISIBLE);
+        handler.removeCallbacks(hideLevelHint);
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private void seekBy(long deltaMs) {
@@ -540,6 +646,9 @@ public final class PlayerActivity extends BaseActivity {
             return;
         }
         seekIndicator.setText(forward ? R.string.player_seek_forward : R.string.player_seek_back);
+        if (levelIndicator != null) {
+            levelIndicator.setVisibility(View.GONE);
+        }
         seekIndicator.setVisibility(View.VISIBLE);
         handler.removeCallbacks(hideSeekHint);
         handler.postDelayed(hideSeekHint, SEEK_HINT_MS);

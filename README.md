@@ -28,7 +28,7 @@ older release.
 - **History** — resume the last watched episode and position.
 - **Detail** — poster, score, genres, synopsis, SUB/DUB switch, and an episode grid.
 - **Player** — quality selection, subtitles, previous/next episode, auto-next, and resume.
-- **Seek gestures** — double-tap the left half of the player to go back 5 seconds, or the right half to go forward 5 seconds.
+- **Player gestures** — double-tap the left half of the player to go back 5 seconds, or the right half to go forward 5 seconds. Swipe up or down on the left half to change the app window's brightness, or on the right half to change playback volume.
 - **Settings** — accent color, light/dark/system theme, app version, GitHub link, and update checks.
 - **Updates** — checks the latest GitHub release on startup when enabled, shows the release notes, downloads the APK, opens the system installer, and removes cached APKs once the installed version is current.
 
@@ -40,6 +40,9 @@ color or Material You theming.
 
 The default accent is classic blue. Settings → Appearance also offers indigo,
 teal, green, red, and orange, plus Light, Dark, and System themes.
+
+The player adjusts brightness through its own window and volume through the
+player instance. Neither changes a system-wide setting or asks for a permission.
 
 ## How it works
 
@@ -58,14 +61,14 @@ The app version lives in
 [`Version.java`](app/src/main/java/com/minhmc2077/aniclijava/Version.java):
 
 ```java
-public static final String NAME = "0.0.1";
+public static final String NAME = "0.0.2";
 ```
 
 Gradle reads this value for the APK `versionName`, so the Java constant is the
 single source of truth. The `versionCode` stays at `1`; this is what allows a
 release to replace any other build signed with the same key.
 
-Release tags use the same value as `Version.NAME` (for example `0.0.1`). The app
+Release tags use the same value as `Version.NAME` (for example `0.0.2`). The app
 compares its own version with the latest release tag to decide whether an update
 is available.
 
