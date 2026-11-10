@@ -1,8 +1,5 @@
 package com.minhmc2077.aniclijava.model;
 
-/**
- * Latest GitHub release that ships an installable APK.
- */
 public final class ReleaseInfo {
     public final String version;
     public final String notes;

@@ -1,8 +1,5 @@
 package com.minhmc2077.aniclijava.model;
 
-/**
- * Extra metadata from an anime detail page.
- */
 public final class AnimeDetail {
     public final String title;
     public final String posterUrl;

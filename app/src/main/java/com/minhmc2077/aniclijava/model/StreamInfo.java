@@ -3,9 +3,6 @@ package com.minhmc2077.aniclijava.model;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Resolved stream information for one episode.
- */
 public final class StreamInfo {
     public final String masterUrl;
     public final String subtitleUrl;

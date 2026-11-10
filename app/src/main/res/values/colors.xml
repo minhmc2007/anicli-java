@@ -33,7 +33,6 @@
     <color name="rank_badge">#D32F2F</color>
     <color name="navigation_bar">#000000</color>
 
-    <!-- Accent presets -->
     <color name="accent_blue">#1976D2</color>
     <color name="accent_blue_dark">#0D47A1</color>
     <color name="accent_blue_container">#E3F2FD</color>

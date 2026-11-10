@@ -442,7 +442,6 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void onPlaybackEnded() {
-        // Finished: clear the resume point before advancing.
         App.get().history().updatePosition(animeId, episode.number, 0L);
         if (episodeIndex >= 0 && episodeIndex + 1 < episodes.size()) {
             playEpisode(episodes.get(episodeIndex + 1));

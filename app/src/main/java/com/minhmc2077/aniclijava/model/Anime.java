@@ -3,9 +3,6 @@ package com.minhmc2077.aniclijava.model;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * A single anime entry scraped from HiAnime.
- */
 public final class Anime {
     public final String id;
     public final String title;

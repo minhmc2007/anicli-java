@@ -101,10 +101,6 @@ public final class AniRepository {
         this.http = http;
     }
 
-    // ---------------------------------------------------------------------
-    // Public API
-    // ---------------------------------------------------------------------
-
     public List<Anime> trending(boolean force) throws IOException {
         long now = System.currentTimeMillis();
         if (!force && trendingCache != null && now - trendingTime < TRENDING_TTL) {
@@ -273,10 +269,6 @@ public final class AniRepository {
 
         return new StreamInfo(masterUrl, subtitleUrl, referer, malId, qualities);
     }
-
-    // ---------------------------------------------------------------------
-    // Parsers
-    // ---------------------------------------------------------------------
 
     private List<Anime> parseTrending(String html) {
         int start = html.indexOf("<div id=\"anime-trending\">");
@@ -496,10 +488,6 @@ public final class AniRepository {
         }
         return new ArrayList<>(deduped.values());
     }
-
-    // ---------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------
 
     private String fetch(String url) throws IOException {
         return fetch(url, null);

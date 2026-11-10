@@ -28,15 +28,12 @@
         <item name="android:windowBackground">@color/background</item>
         <item name="android:windowActionModeOverlay">true</item>
 
-        <!-- Flat surfaces: no tonal elevation tint, no shadows. -->
         <item name="elevationOverlayEnabled">false</item>
         <item name="elevationOverlayColor">@android:color/transparent</item>
 
-        <!-- Roboto -->
         <item name="android:fontFamily">sans-serif</item>
         <item name="fontFamily">sans-serif</item>
 
-        <!-- Compact Roboto type scale -->
         <item name="textAppearanceHeadlineSmall">@style/TextAppearance.AniCli.HeadlineSmall</item>
         <item name="textAppearanceTitleLarge">@style/TextAppearance.AniCli.TitleLarge</item>
         <item name="textAppearanceTitleMedium">@style/TextAppearance.AniCli.TitleMedium</item>
@@ -46,7 +43,6 @@
         <item name="textAppearanceBodySmall">@style/TextAppearance.AniCli.BodySmall</item>
         <item name="textAppearanceLabelLarge">@style/TextAppearance.AniCli.LabelLarge</item>
 
-        <!-- Square-ish shapes everywhere. -->
         <item name="shapeAppearanceCornerExtraSmall">@style/ShapeAppearance.AniCli.Small</item>
         <item name="shapeAppearanceCornerSmall">@style/ShapeAppearance.AniCli.Small</item>
         <item name="shapeAppearanceCornerMedium">@style/ShapeAppearance.AniCli.Small</item>
@@ -66,7 +62,6 @@
         <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p">shortEdges</item>
     </style>
 
-    <!-- Shapes -->
     <style name="ShapeAppearance.AniCli.Small" parent="">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">2dp</item>
@@ -87,7 +82,6 @@
         <item name="cornerSize">2dp</item>
     </style>
 
-    <!-- Roboto text styles -->
     <style name="TextAppearance.AniCli.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall">
         <item name="android:fontFamily">sans-serif-medium</item>
         <item name="fontFamily">sans-serif-medium</item>
@@ -150,7 +144,6 @@
         <item name="android:textSize">11sp</item>
     </style>
 
-    <!-- Flat, square-ish buttons -->
     <style name="Widget.AniCli.Button" parent="Widget.Material3.Button">
         <item name="android:minHeight">40dp</item>
         <item name="android:insetTop">0dp</item>
@@ -221,7 +214,6 @@
         <item name="android:color">@android:color/transparent</item>
     </style>
 
-    <!-- Solid blue app bar -->
     <style name="Widget.AniCli.Toolbar" parent="Widget.MaterialComponents.Toolbar">
         <item name="android:background">?attr/colorPrimary</item>
         <item name="android:elevation">0dp</item>
@@ -230,7 +222,6 @@
         <item name="navigationIconTint">?attr/colorOnPrimary</item>
     </style>
 
-    <!-- Accent presets -->
     <style name="ThemeOverlay.AniCli.Accent.Blue" parent="">
         <item name="colorPrimary">@color/accent_blue</item>
         <item name="colorPrimaryDark">@color/accent_blue_dark</item>

@@ -1,8 +1,5 @@
 package com.minhmc2077.aniclijava.model;
 
-/**
- * A quality variant found in an HLS master playlist.
- */
 public final class Quality {
     public final String label;
     public final int height;
