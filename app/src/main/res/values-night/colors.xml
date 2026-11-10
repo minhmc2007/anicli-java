@@ -32,4 +32,23 @@
     <color name="player_background">#000000</color>
     <color name="rank_badge">#D32F2F</color>
     <color name="navigation_bar">#000000</color>
+
+    <!-- Accent presets -->
+    <color name="accent_blue_container">#12324F</color>
+    <color name="accent_blue_on_container">#BBDEFB</color>
+
+    <color name="accent_indigo_container">#252A55</color>
+    <color name="accent_indigo_on_container">#C5CAE9</color>
+
+    <color name="accent_teal_container">#103B36</color>
+    <color name="accent_teal_on_container">#B2DFDB</color>
+
+    <color name="accent_green_container">#16381A</color>
+    <color name="accent_green_on_container">#C8E6C9</color>
+
+    <color name="accent_red_container">#4A1A1A</color>
+    <color name="accent_red_on_container">#FFCDD2</color>
+
+    <color name="accent_orange_container">#4A2410</color>
+    <color name="accent_orange_on_container">#FFE0B2</color>
 </resources>

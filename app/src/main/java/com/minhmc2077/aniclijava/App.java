@@ -10,6 +10,7 @@ import com.minhmc2077.aniclijava.data.FavouriteStore;
 import com.minhmc2077.aniclijava.data.HistoryStore;
 import com.minhmc2077.aniclijava.net.CronetHttp;
 import com.minhmc2077.aniclijava.net.ImageLoader;
+import com.minhmc2077.aniclijava.util.Settings;
 
 import org.chromium.net.CronetEngine;
 
@@ -42,6 +43,7 @@ public final class App extends Application {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        Settings.applyNightMode(this);
 
         io = Executors.newFixedThreadPool(4);
         cronetCallbacks = Executors.newCachedThreadPool();

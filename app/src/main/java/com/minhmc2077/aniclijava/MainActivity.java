@@ -6,21 +6,22 @@ import android.view.MenuItem;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.minhmc2077.aniclijava.ui.BaseActivity;
 import com.minhmc2077.aniclijava.ui.FavouritesFragment;
 import com.minhmc2077.aniclijava.ui.HistoryFragment;
 import com.minhmc2077.aniclijava.ui.HomeFragment;
 import com.minhmc2077.aniclijava.ui.Refreshable;
 import com.minhmc2077.aniclijava.ui.SearchFragment;
+import com.minhmc2077.aniclijava.ui.SettingsActivity;
 import com.minhmc2077.aniclijava.util.Ui;
 
-public final class MainActivity extends AppCompatActivity {
+public final class MainActivity extends BaseActivity {
     private static final String TAG_HOME = "tab_home";
     private static final String TAG_SEARCH = "tab_search";
     private static final String TAG_FAVOURITES = "tab_favourites";
@@ -85,6 +86,10 @@ public final class MainActivity extends AppCompatActivity {
         if (clear != null) {
             clear.setVisible(currentTab == R.id.nav_history);
         }
+        MenuItem settings = menu.findItem(R.id.action_settings);
+        if (settings != null) {
+            settings.setVisible(currentTab == R.id.nav_home);
+        }
         return super.onPrepareOptionsMenu(menu);
     }
 
@@ -95,6 +100,10 @@ public final class MainActivity extends AppCompatActivity {
             if (fragment instanceof HistoryFragment) {
                 ((HistoryFragment) fragment).confirmClear();
             }
+            return true;
+        }
+        if (item.getItemId() == R.id.action_settings) {
+            startActivity(new Intent(this, SettingsActivity.class));
             return true;
         }
         return super.onOptionsItemSelected(item);

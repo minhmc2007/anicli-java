@@ -32,4 +32,35 @@
     <color name="player_background">#000000</color>
     <color name="rank_badge">#D32F2F</color>
     <color name="navigation_bar">#000000</color>
+
+    <!-- Accent presets -->
+    <color name="accent_blue">#1976D2</color>
+    <color name="accent_blue_dark">#0D47A1</color>
+    <color name="accent_blue_container">#E3F2FD</color>
+    <color name="accent_blue_on_container">#0D47A1</color>
+
+    <color name="accent_indigo">#3F51B5</color>
+    <color name="accent_indigo_dark">#303F9F</color>
+    <color name="accent_indigo_container">#E8EAF6</color>
+    <color name="accent_indigo_on_container">#1A237E</color>
+
+    <color name="accent_teal">#00796B</color>
+    <color name="accent_teal_dark">#004D40</color>
+    <color name="accent_teal_container">#E0F2F1</color>
+    <color name="accent_teal_on_container">#004D40</color>
+
+    <color name="accent_green">#388E3C</color>
+    <color name="accent_green_dark">#1B5E20</color>
+    <color name="accent_green_container">#E8F5E9</color>
+    <color name="accent_green_on_container">#1B5E20</color>
+
+    <color name="accent_red">#D32F2F</color>
+    <color name="accent_red_dark">#B71C1C</color>
+    <color name="accent_red_container">#FFEBEE</color>
+    <color name="accent_red_on_container">#B71C1C</color>
+
+    <color name="accent_orange">#E64A19</color>
+    <color name="accent_orange_dark">#BF360C</color>
+    <color name="accent_orange_container">#FFF3E0</color>
+    <color name="accent_orange_on_container">#BF360C</color>
 </resources>

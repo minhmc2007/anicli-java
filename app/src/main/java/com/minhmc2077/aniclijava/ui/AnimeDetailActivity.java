@@ -7,7 +7,6 @@ import android.text.TextUtils;
 import android.view.View;
 
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -22,7 +21,7 @@ import com.minhmc2077.aniclijava.util.Ui;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class AnimeDetailActivity extends AppCompatActivity {
+public final class AnimeDetailActivity extends BaseActivity {
     private static final String EXTRA_ID = "anime_id";
     private static final String EXTRA_TITLE = "anime_title";
     private static final String EXTRA_POSTER = "anime_poster";

@@ -7,6 +7,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageButton;
@@ -16,7 +18,6 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
@@ -47,7 +48,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class PlayerActivity extends AppCompatActivity {
+public final class PlayerActivity extends BaseActivity {
     private static final String EXTRA_ANIME_ID = "anime_id";
     private static final String EXTRA_TITLE = "anime_title";
     private static final String EXTRA_POSTER = "anime_poster";
@@ -55,6 +56,8 @@ public final class PlayerActivity extends AppCompatActivity {
     private static final String EXTRA_EPISODE_ID = "episode_id";
     private static final String EXTRA_MODE = "mode";
     private static final long SAVE_INTERVAL_MS = 5000L;
+    private static final long SEEK_STEP_MS = 5000L;
+    private static final long SEEK_HINT_MS = 700L;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable saveProgress = new Runnable() {
@@ -62,6 +65,11 @@ public final class PlayerActivity extends AppCompatActivity {
         public void run() {
             savePosition();
             handler.postDelayed(this, SAVE_INTERVAL_MS);
+        }
+    };
+    private final Runnable hideSeekHint = () -> {
+        if (seekIndicator != null) {
+            seekIndicator.setVisibility(View.GONE);
         }
     };
 
@@ -79,6 +87,8 @@ public final class PlayerActivity extends AppCompatActivity {
     private ProgressBar stateProgress;
     private TextView stateText;
     private MaterialButton retryButton;
+    private TextView seekIndicator;
+    private GestureDetector seekGestureDetector;
 
     private String animeId;
     private String animeTitle;
@@ -137,8 +147,10 @@ public final class PlayerActivity extends AppCompatActivity {
         stateProgress = findViewById(R.id.state_progress);
         stateText = findViewById(R.id.state_text);
         retryButton = findViewById(R.id.retry_button);
+        seekIndicator = findViewById(R.id.seek_indicator);
 
         Ui.applyTopInset(topBar);
+        setUpSeekGestures();
 
         animeId = getIntent().getStringExtra(EXTRA_ANIME_ID);
         animeTitle = getIntent().getStringExtra(EXTRA_TITLE);
@@ -479,6 +491,49 @@ public final class PlayerActivity extends AppCompatActivity {
         if (stateView != null) {
             stateView.setVisibility(View.GONE);
         }
+    }
+
+    private void setUpSeekGestures() {
+        seekGestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDown(@NonNull MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onDoubleTap(@NonNull MotionEvent e) {
+                boolean forward = e.getX() >= playerView.getWidth() / 2f;
+                seekBy(forward ? SEEK_STEP_MS : -SEEK_STEP_MS);
+                return true;
+            }
+        });
+        playerView.setOnTouchListener((view, event) -> {
+            seekGestureDetector.onTouchEvent(event);
+            return false;
+        });
+    }
+
+    private void seekBy(long deltaMs) {
+        if (player == null) {
+            return;
+        }
+        long duration = player.getDuration();
+        long target = Math.max(0L, player.getCurrentPosition() + deltaMs);
+        if (duration > 0 && target > duration) {
+            target = duration;
+        }
+        player.seekTo(target);
+        showSeekHint(deltaMs > 0);
+    }
+
+    private void showSeekHint(boolean forward) {
+        if (seekIndicator == null) {
+            return;
+        }
+        seekIndicator.setText(forward ? R.string.player_seek_forward : R.string.player_seek_back);
+        seekIndicator.setVisibility(View.VISIBLE);
+        handler.removeCallbacks(hideSeekHint);
+        handler.postDelayed(hideSeekHint, SEEK_HINT_MS);
     }
 
     private void savePosition() {
