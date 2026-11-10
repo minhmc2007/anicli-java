@@ -67,11 +67,6 @@ public final class PlayerActivity extends BaseActivity {
             handler.postDelayed(this, SAVE_INTERVAL_MS);
         }
     };
-    private final Runnable hideSeekHint = () -> {
-        if (seekIndicator != null) {
-            seekIndicator.setVisibility(View.GONE);
-        }
-    };
 
     private PlayerView playerView;
     private ExoPlayer player;
@@ -89,6 +84,11 @@ public final class PlayerActivity extends BaseActivity {
     private MaterialButton retryButton;
     private TextView seekIndicator;
     private GestureDetector seekGestureDetector;
+    private final Runnable hideSeekHint = () -> {
+        if (seekIndicator != null) {
+            seekIndicator.setVisibility(View.GONE);
+        }
+    };
 
     private String animeId;
     private String animeTitle;
