@@ -29,6 +29,8 @@ older release.
 - **Detail** — poster, score, genres, synopsis, SUB/DUB switch, and an episode grid.
 - **Player** — quality selection, subtitles, previous/next episode, auto-next, and resume.
 - **Player gestures** — double-tap the left half of the player to go back 5 seconds, or the right half to go forward 5 seconds. Swipe up or down on the left half to change the app window's brightness, or on the right half to change playback volume.
+- **Airing alerts** — tap the megaphone on an anime page to get a notification when a newer episode appears upstream. Episode labels such as `5.5` or `2.5` are compared numerically.
+- **New episode badge** — favourites with a newer upstream episode than the last watched one show a small `New episode` label on the poster.
 - **Settings** — accent color, light/dark/system theme, app version, GitHub link, and update checks.
 - **Updates** — checks the latest GitHub release on startup when enabled, shows the release notes, downloads the APK, opens the system installer, and removes cached APKs once the installed version is current.
 
@@ -54,6 +56,18 @@ player instance. Neither changes a system-wide setting or asks for a permission.
 
 Favourites, history, and settings are stored in `SharedPreferences`. There is no
 account, server, or analytics service.
+
+## Airing checks
+
+Airing alerts live behind the megaphone button on an anime page. When enabled,
+the app compares the latest upstream episode with the last watched episode and
+posts a local notification when something new appears. The check runs from an
+inexact repeating alarm about every 10 minutes, plus once on app start. Android
+may delay the alarm in Doze, so the interval is not guaranteed.
+
+Notifications need the Android 13+ notification permission. The app asks for it
+when alerts are enabled and only uses it for these local airing messages. The
+same background check keeps the `New episode` badge on the Favourites tab fresh.
 
 ## Versioning and releases
 

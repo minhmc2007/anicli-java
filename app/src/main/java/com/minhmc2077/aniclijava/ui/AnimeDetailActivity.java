@@ -1,21 +1,28 @@
 package com.minhmc2077.aniclijava.ui;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.View;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
+import com.minhmc2077.aniclijava.data.AiringChecker;
 import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.ui.adapter.DetailAdapter;
+import com.minhmc2077.aniclijava.util.AiringAlarm;
 import com.minhmc2077.aniclijava.util.Ui;
 
 import java.util.ArrayList;
@@ -26,6 +33,7 @@ public final class AnimeDetailActivity extends BaseActivity {
     private static final String EXTRA_TITLE = "anime_title";
     private static final String EXTRA_POSTER = "anime_poster";
     private static final String EXTRA_MODE = "mode";
+    private static final int REQUEST_NOTIFICATIONS = 3301;
 
     private String animeId;
     private String animeTitle;
@@ -42,14 +50,19 @@ public final class AnimeDetailActivity extends BaseActivity {
     private boolean destroyed;
 
     public static void start(Context context, Anime anime, @Nullable String episodeNumber) {
-        Intent intent = new Intent(context, AnimeDetailActivity.class);
-        intent.putExtra(EXTRA_ID, anime.id);
-        intent.putExtra(EXTRA_TITLE, anime.title);
-        intent.putExtra(EXTRA_POSTER, anime.posterUrl);
+        Intent intent = intent(context, anime);
         if (episodeNumber != null) {
             intent.putExtra("episode", episodeNumber);
         }
         context.startActivity(intent);
+    }
+
+    static Intent intent(Context context, Anime anime) {
+        Intent intent = new Intent(context, AnimeDetailActivity.class);
+        intent.putExtra(EXTRA_ID, anime.id);
+        intent.putExtra(EXTRA_TITLE, anime.title);
+        intent.putExtra(EXTRA_POSTER, anime.posterUrl);
+        return intent;
     }
 
     @Override
@@ -109,9 +122,15 @@ public final class AnimeDetailActivity extends BaseActivity {
                 if (adapter != null) {
                     adapter.setFavourite(favourite);
                 }
+                AiringAlarm.sync(AnimeDetailActivity.this);
                 Ui.toast(AnimeDetailActivity.this, getString(favourite
                         ? R.string.favourite_added
                         : R.string.favourite_removed));
+            }
+
+            @Override
+            public void onToggleNotify() {
+                toggleAiringAlerts();
             }
 
             @Override
@@ -131,6 +150,7 @@ public final class AnimeDetailActivity extends BaseActivity {
         adapter.setAnime(anime);
         adapter.setDub("dub".equals(mode));
         adapter.setFavourite(App.get().favourites().isFavourite(animeId));
+        adapter.setNotifyEnabled(App.get().airing().isEnabled(animeId));
 
         loadDetail();
         loadEpisodes();
@@ -188,6 +208,50 @@ public final class AnimeDetailActivity extends BaseActivity {
         PlayerActivity.start(this, anime, episode, mode);
     }
 
+    private void toggleAiringAlerts() {
+        boolean enabled = !App.get().airing().isEnabled(animeId);
+        App.get().airing().setEnabled(anime, enabled);
+        if (adapter != null) {
+            adapter.setNotifyEnabled(enabled);
+        }
+        if (enabled) {
+            requestNotificationPermission();
+            Ui.toast(this, getString(R.string.airing_enabled));
+            AiringAlarm.sync(this);
+            AiringChecker.refreshAsync(this, null);
+        } else {
+            AiringNotifications.cancel(this, animeId);
+            Ui.toast(this, getString(R.string.airing_disabled));
+            AiringAlarm.sync(this);
+        }
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                REQUEST_NOTIFICATIONS);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_NOTIFICATIONS) {
+            return;
+        }
+        boolean granted = grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        if (!granted) {
+            Ui.toast(this, getString(R.string.airing_permission_denied));
+        }
+    }
+
     @Override
     protected void onSaveInstanceState(@androidx.annotation.NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
@@ -199,6 +263,7 @@ public final class AnimeDetailActivity extends BaseActivity {
         super.onResume();
         if (adapter != null) {
             adapter.setFavourite(App.get().favourites().isFavourite(animeId));
+            adapter.setNotifyEnabled(App.get().airing().isEnabled(animeId));
         }
     }
 

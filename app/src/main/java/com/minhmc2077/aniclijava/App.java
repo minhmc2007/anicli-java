@@ -5,11 +5,13 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.minhmc2077.aniclijava.data.AiringStore;
 import com.minhmc2077.aniclijava.data.AniRepository;
 import com.minhmc2077.aniclijava.data.FavouriteStore;
 import com.minhmc2077.aniclijava.data.HistoryStore;
 import com.minhmc2077.aniclijava.net.CronetHttp;
 import com.minhmc2077.aniclijava.net.ImageLoader;
+import com.minhmc2077.aniclijava.util.AiringAlarm;
 import com.minhmc2077.aniclijava.util.Settings;
 
 import org.chromium.net.CronetEngine;
@@ -34,6 +36,7 @@ public final class App extends Application {
     private ImageLoader imageLoader;
     private FavouriteStore favourites;
     private HistoryStore history;
+    private AiringStore airing;
 
     public static App get() {
         return instance;
@@ -70,6 +73,8 @@ public final class App extends Application {
         imageLoader = new ImageLoader(this, http, io);
         favourites = new FavouriteStore(this);
         history = new HistoryStore(this);
+        airing = new AiringStore(this);
+        AiringAlarm.sync(this);
     }
 
     public CronetEngine cronetEngine() {
@@ -102,6 +107,10 @@ public final class App extends Application {
 
     public HistoryStore history() {
         return history;
+    }
+
+    public AiringStore airing() {
+        return airing;
     }
 
     public <T> void async(Callable<T> task, Consumer<T> onSuccess, Consumer<Exception> onError) {

@@ -14,7 +14,10 @@ import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.net.ImageLoader;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class AnimeAdapter extends RecyclerView.Adapter<AnimeAdapter.Holder> {
     public interface Listener {
@@ -24,6 +27,7 @@ public final class AnimeAdapter extends RecyclerView.Adapter<AnimeAdapter.Holder
     private final ImageLoader imageLoader;
     private final Listener listener;
     private final List<Anime> items = new ArrayList<>();
+    private final Set<String> newEpisodes = new HashSet<>();
 
     public AnimeAdapter(ImageLoader imageLoader, Listener listener) {
         this.imageLoader = imageLoader;
@@ -42,6 +46,14 @@ public final class AnimeAdapter extends RecyclerView.Adapter<AnimeAdapter.Holder
         return items;
     }
 
+    public void setNewEpisodes(Collection<String> animeIds) {
+        newEpisodes.clear();
+        if (animeIds != null) {
+            newEpisodes.addAll(animeIds);
+        }
+        notifyDataSetChanged();
+    }
+
     @NonNull
     @Override
     public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -56,12 +68,14 @@ public final class AnimeAdapter extends RecyclerView.Adapter<AnimeAdapter.Holder
         holder.title.setText(anime.title);
         holder.poster.setContentDescription(anime.title);
 
-        if (anime.rank > 0) {
+        boolean hasNewEpisode = newEpisodes.contains(anime.id);
+        if (anime.rank > 0 && !hasNewEpisode) {
             holder.rank.setVisibility(View.VISIBLE);
             holder.rank.setText(String.format(java.util.Locale.US, "#%d", anime.rank));
         } else {
             holder.rank.setVisibility(View.GONE);
         }
+        holder.newEpisode.setVisibility(hasNewEpisode ? View.VISIBLE : View.GONE);
 
         String meta = buildMeta(anime);
         if (meta.isEmpty()) {
@@ -102,6 +116,7 @@ public final class AnimeAdapter extends RecyclerView.Adapter<AnimeAdapter.Holder
         final TextView title;
         final TextView meta;
         final TextView rank;
+        final TextView newEpisode;
 
         Holder(@NonNull View itemView) {
             super(itemView);
@@ -109,6 +124,7 @@ public final class AnimeAdapter extends RecyclerView.Adapter<AnimeAdapter.Holder
             title = itemView.findViewById(R.id.title);
             meta = itemView.findViewById(R.id.meta);
             rank = itemView.findViewById(R.id.rank);
+            newEpisode = itemView.findViewById(R.id.new_episode);
         }
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import com.minhmc2077.aniclijava.model.HistoryEntry;
+import com.minhmc2077.aniclijava.util.EpisodeNumbers;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -50,6 +51,29 @@ public final class HistoryStore {
             }
         }
         return null;
+    }
+
+    /**
+     * Returns the highest episode number watched for an anime. History keeps one
+     * entry per anime, but comparing numerically also handles specials like 5.5.
+     */
+    public synchronized HistoryEntry latestForAnime(String animeId) {
+        if (animeId == null) {
+            return null;
+        }
+        HistoryEntry best = null;
+        double bestValue = -1d;
+        for (HistoryEntry entry : getAll()) {
+            if (!animeId.equals(entry.animeId)) {
+                continue;
+            }
+            double value = EpisodeNumbers.value(entry.episodeNumber);
+            if (value >= 0d && value > bestValue) {
+                bestValue = value;
+                best = entry;
+            }
+        }
+        return best;
     }
 
     public synchronized void upsert(String animeId, String title, String posterUrl,

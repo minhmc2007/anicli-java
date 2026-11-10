@@ -32,6 +32,8 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
 
         void onToggleFavourite();
 
+        void onToggleNotify();
+
         void onEpisode(Episode episode);
 
         void onModeChanged(boolean dub);
@@ -44,6 +46,7 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
     private Anime anime;
     private AnimeDetail detail;
     private boolean favourite;
+    private boolean notifyEnabled;
     private boolean dub;
     private boolean loadingEpisodes;
     private String episodesError;
@@ -66,6 +69,11 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
 
     public void setFavourite(boolean favourite) {
         this.favourite = favourite;
+        notifyItemChanged(0);
+    }
+
+    public void setNotifyEnabled(boolean notifyEnabled) {
+        this.notifyEnabled = notifyEnabled;
         notifyItemChanged(0);
     }
 
@@ -193,6 +201,9 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         holder.favourite.setIconResource(favourite
                 ? R.drawable.ic_favorite
                 : R.drawable.ic_favorite_border);
+        holder.notify.setAlpha(notifyEnabled ? 1f : 0.5f);
+        holder.notify.setContentDescription(holder.itemView.getContext().getString(
+                notifyEnabled ? R.string.airing_turn_off : R.string.airing_turn_on));
         holder.play.setEnabled(!episodes.isEmpty());
 
         bindingHeader = true;
@@ -231,6 +242,7 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         final ProgressBar episodesProgress;
         final MaterialButton play;
         final MaterialButton favourite;
+        final MaterialButton notify;
         final MaterialButtonToggleGroup modeGroup;
 
         HeaderHolder(@NonNull View itemView) {
@@ -246,6 +258,7 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
             episodesProgress = itemView.findViewById(R.id.episodes_progress);
             play = itemView.findViewById(R.id.detail_play);
             favourite = itemView.findViewById(R.id.detail_favourite);
+            notify = itemView.findViewById(R.id.detail_notify);
             modeGroup = itemView.findViewById(R.id.mode_group);
 
             play.setOnClickListener(v -> {
@@ -256,6 +269,11 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
             favourite.setOnClickListener(v -> {
                 if (listener != null) {
                     listener.onToggleFavourite();
+                }
+            });
+            notify.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onToggleNotify();
                 }
             });
             modeGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {

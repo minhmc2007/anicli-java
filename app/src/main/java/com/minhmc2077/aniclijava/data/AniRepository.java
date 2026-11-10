@@ -152,7 +152,11 @@ public final class AniRepository {
     }
 
     public List<Episode> episodes(String animeId) throws IOException {
-        List<Episode> cached = episodeCache.get(animeId);
+        return episodes(animeId, false);
+    }
+
+    public List<Episode> episodes(String animeId, boolean force) throws IOException {
+        List<Episode> cached = force ? null : episodeCache.get(animeId);
         if (cached != null) {
             return cached;
         }

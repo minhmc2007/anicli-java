@@ -17,6 +17,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.google.android.material.button.MaterialButton;
 import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
+import com.minhmc2077.aniclijava.data.AiringChecker;
 import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.ui.adapter.AnimeAdapter;
 
@@ -77,10 +78,16 @@ public final class FavouritesFragment extends Fragment implements Refreshable {
         }
         List<Anime> items = App.get().favourites().getAll();
         adapter.submit(items);
+        adapter.setNewEpisodes(AiringChecker.badges());
         if (items.isEmpty()) {
             showEmpty();
         } else {
             hideState();
+            AiringChecker.refreshAsync(requireContext(), ids -> {
+                if (adapter != null) {
+                    adapter.setNewEpisodes(ids);
+                }
+            });
         }
     }
 

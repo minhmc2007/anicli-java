@@ -41,6 +41,26 @@
             android:visibility="gone"
             tools:text="#1" />
 
+        <TextView
+            android:id="@+id/new_episode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="6dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_new_episode"
+            android:maxLines="1"
+            android:paddingStart="5dp"
+            android:paddingTop="1dp"
+            android:paddingEnd="5dp"
+            android:paddingBottom="1dp"
+            android:text="@string/airing_new_episode"
+            android:textColor="@android:color/white"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:text="New episode" />
+
     </com.minhmc2077.aniclijava.widget.AspectRatioFrameLayout>
 
     <TextView

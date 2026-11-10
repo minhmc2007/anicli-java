@@ -50,6 +50,16 @@
     <string name="detail_score">★ %1$s</string>
     <string name="detail_episode_short">Ep %1$s</string>
 
+    <string name="airing_turn_on">Enable airing alerts</string>
+    <string name="airing_turn_off">Disable airing alerts</string>
+    <string name="airing_enabled">Airing alerts on</string>
+    <string name="airing_disabled">Airing alerts off</string>
+    <string name="airing_permission_denied">Airing alerts are on, but notifications are blocked in system settings.</string>
+    <string name="airing_new_episode">New episode</string>
+    <string name="airing_channel_name">Airing episodes</string>
+    <string name="airing_channel_description">New episodes for anime you follow</string>
+    <string name="airing_notification_text">Episode %1$s is now available.</string>
+
     <string name="player_previous">Previous</string>
     <string name="player_next">Next</string>
     <string name="player_quality">Quality</string>
