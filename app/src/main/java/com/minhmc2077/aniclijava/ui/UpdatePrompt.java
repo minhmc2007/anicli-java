@@ -24,6 +24,7 @@ import java.util.Map;
 public final class UpdatePrompt {
     private static final int MAX_NOTES_LENGTH = 600;
     private static boolean checking;
+    private static File pendingInstall;
 
     private UpdatePrompt() {
     }
@@ -85,16 +86,22 @@ public final class UpdatePrompt {
     private static void download(Activity activity, ReleaseInfo release) {
         ProgressDialog progress = new ProgressDialog(activity);
         progress.setMessage(activity.getString(R.string.update_downloading));
-        progress.setIndeterminate(true);
+        progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+        progress.setMax(100);
+        progress.setProgress(0);
+        progress.setIndeterminate(false);
         progress.setCancelable(false);
         progress.show();
 
         File target = GitHubReleases.apkFile(activity, release.version);
+        final int[] lastPercent = {-1};
         App.get().async(
                 () -> {
                     Map<String, String> headers = new HashMap<>();
                     headers.put("Accept", "application/vnd.android.package-archive");
-                    App.get().http().download(release.apkUrl, headers, target);
+                    App.get().http().download(release.apkUrl, headers, target,
+                            (bytesRead, totalBytes) -> updateProgress(
+                                    activity, progress, lastPercent, bytesRead, totalBytes));
                     return target;
                 },
                 file -> {
@@ -108,6 +115,26 @@ public final class UpdatePrompt {
                                 Toast.LENGTH_LONG).show();
                     }
                 });
+    }
+
+    private static void updateProgress(Activity activity, ProgressDialog progress,
+                                       int[] lastPercent, long bytesRead, long totalBytes) {
+        if (totalBytes <= 0L) {
+            return;
+        }
+        int percent = (int) Math.min(100L, Math.round(bytesRead * 100d / totalBytes));
+        if (percent == lastPercent[0]) {
+            return;
+        }
+        lastPercent[0] = percent;
+        activity.runOnUiThread(() -> {
+            if (activity.isFinishing() || activity.isDestroyed()) {
+                return;
+            }
+            progress.setIndeterminate(false);
+            progress.setProgress(percent);
+            progress.setMessage(activity.getString(R.string.update_downloading_percent, percent));
+        });
     }
 
     private static void dismiss(ProgressDialog progress, Activity activity) {
@@ -125,6 +152,7 @@ public final class UpdatePrompt {
                     .setTitle(R.string.update_install_title)
                     .setMessage(R.string.update_install_message)
                     .setPositiveButton(R.string.update_open_settings, (dialog, which) -> {
+                        pendingInstall = apk;
                         Intent settings = new Intent(
                                 android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                                 Uri.parse("package:" + activity.getPackageName()));
@@ -135,6 +163,7 @@ public final class UpdatePrompt {
             return;
         }
 
+        pendingInstall = null;
         Uri uri = FileProvider.getUriForFile(
                 activity, activity.getPackageName() + ".fileprovider", apk);
         Intent intent = new Intent(Intent.ACTION_VIEW)
@@ -145,5 +174,22 @@ public final class UpdatePrompt {
         } catch (ActivityNotFoundException error) {
             Toast.makeText(activity, R.string.update_failed, Toast.LENGTH_LONG).show();
         }
+    }
+
+    // The settings screen returns no result, so check again when the app resumes.
+    public static void resumeInstall(Activity activity) {
+        File apk = pendingInstall;
+        if (apk == null || activity.isFinishing() || activity.isDestroyed()) {
+            return;
+        }
+        if (!apk.exists()) {
+            pendingInstall = null;
+            return;
+        }
+        if (!activity.getPackageManager().canRequestPackageInstalls()) {
+            return;
+        }
+        pendingInstall = null;
+        install(activity, apk);
     }
 }

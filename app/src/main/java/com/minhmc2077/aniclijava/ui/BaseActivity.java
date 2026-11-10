@@ -22,6 +22,8 @@ public abstract class BaseActivity extends AppCompatActivity {
         super.onResume();
         if (!Settings.accent(this).equals(appliedAccent)) {
             recreate();
+            return;
         }
+        UpdatePrompt.resumeInstall(this);
     }
 }

@@ -134,11 +134,12 @@
     <string name="update_later">Later</string>
     <string name="update_disable">Don\'t check again</string>
     <string name="update_downloading">Downloading update…</string>
+    <string name="update_downloading_percent">Downloading update… %1$d%%</string>
     <string name="update_failed">Could not download the update.</string>
     <string name="update_check_failed">Could not check for updates.</string>
     <string name="update_up_to_date">You are on the latest version.</string>
     <string name="update_install_title">Allow app installs</string>
-    <string name="update_install_message">Android needs permission to install the downloaded update. Enable it for AniCli Java, then try again.</string>
+    <string name="update_install_message">Android needs permission to install the downloaded update. Enable it for AniCli Java, then return to the app.</string>
     <string name="update_open_settings">Open settings</string>
 
     <string name="powered_by">Trending data from hianime.at</string>

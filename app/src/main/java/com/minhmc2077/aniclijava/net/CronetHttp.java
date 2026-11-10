@@ -11,6 +11,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -23,6 +24,10 @@ import java.util.concurrent.TimeUnit;
  * app simple and readable.
  */
 public final class CronetHttp {
+    public interface ProgressListener {
+        void onProgress(long bytesRead, long totalBytes);
+    }
+
     public static final String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -128,6 +133,11 @@ public final class CronetHttp {
     }
 
     public int download(String url, Map<String, String> headers, File target) throws IOException {
+        return download(url, headers, target, null);
+    }
+
+    public int download(String url, Map<String, String> headers, File target,
+                        ProgressListener listener) throws IOException {
         File parent = target.getParentFile();
         if (parent != null && !parent.exists()) {
             //noinspection ResultOfMethodCallIgnored
@@ -136,6 +146,8 @@ public final class CronetHttp {
 
         final FileOutputStream output = new FileOutputStream(target);
         final int[] status = {0};
+        final long[] total = {-1L};
+        final long[] received = {0L};
         final IOException[] failure = {null};
         final CountDownLatch latch = new CountDownLatch(1);
 
@@ -150,6 +162,10 @@ public final class CronetHttp {
             public void onResponseStarted(UrlRequest request, UrlResponseInfo info)
                     throws IOException {
                 status[0] = info.getHttpStatusCode();
+                total[0] = contentLength(info);
+                if (listener != null) {
+                    listener.onProgress(0L, total[0]);
+                }
                 request.read(ByteBuffer.allocateDirect(64 * 1024));
             }
 
@@ -162,6 +178,10 @@ public final class CronetHttp {
                         byte[] chunk = new byte[buffer.remaining()];
                         buffer.get(chunk);
                         output.write(chunk);
+                        received[0] += chunk.length;
+                        if (listener != null) {
+                            listener.onProgress(received[0], total[0]);
+                        }
                     }
                 } catch (IOException error) {
                     failure[0] = error;
@@ -217,6 +237,20 @@ public final class CronetHttp {
             throw new IOException("Download HTTP " + status[0]);
         }
         return status[0];
+    }
+
+    private static long contentLength(UrlResponseInfo info) {
+        for (Map.Entry<String, List<String>> header : info.getAllHeaders().entrySet()) {
+            if (!"content-length".equalsIgnoreCase(header.getKey()) || header.getValue().isEmpty()) {
+                continue;
+            }
+            try {
+                return Long.parseLong(header.getValue().get(0));
+            } catch (NumberFormatException ignored) {
+                return -1L;
+            }
+        }
+        return -1L;
     }
 
     private UrlRequest.Builder requestBuilder(String url, UrlRequest.Callback callback,
