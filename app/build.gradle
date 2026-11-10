@@ -6,6 +6,17 @@ android {
     namespace 'com.minhmc2077.aniclijava'
     compileSdk 36
 
+    // Fixed debug key so consecutive CI builds are signed identically.
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storeType 'PKCS12'
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
     defaultConfig {
         applicationId "com.minhmc2077.aniclijava"
         minSdk 26
@@ -20,6 +31,7 @@ android {
 
     buildTypes {
         debug {
+            signingConfig signingConfigs.debug
             versionNameSuffix "-debug"
         }
         release {

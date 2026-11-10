@@ -27,6 +27,9 @@ jobs:
       - name: Build debug APKs
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Show signing key
+        run: ./gradlew :app:signingReport --no-daemon
+
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
