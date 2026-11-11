@@ -52,6 +52,7 @@ public final class SettingsActivity extends BaseActivity {
 
         buildAccentRow();
         setUpThemeGroup();
+        setUpSkipButtonGroup();
 
         findViewById(R.id.github_button).setOnClickListener(v -> openRepository());
 
@@ -337,6 +338,31 @@ public final class SettingsActivity extends BaseActivity {
             }
             Settings.setThemeMode(this, newMode);
             AppCompatDelegate.setDefaultNightMode(newMode);
+        });
+    }
+
+    private void setUpSkipButtonGroup() {
+        MaterialButtonToggleGroup group = findViewById(R.id.skip_button_group);
+        int mode = Settings.skipButtonMode(this);
+        group.check(mode == Settings.SKIP_OFF
+                ? R.id.skip_button_off
+                : mode == Settings.SKIP_ON_TIME
+                ? R.id.skip_button_on_time
+                : R.id.skip_button_early);
+
+        group.addOnButtonCheckedListener((buttonGroup, checkedId, isChecked) -> {
+            if (!isChecked) {
+                return;
+            }
+            int newMode;
+            if (checkedId == R.id.skip_button_off) {
+                newMode = Settings.SKIP_OFF;
+            } else if (checkedId == R.id.skip_button_on_time) {
+                newMode = Settings.SKIP_ON_TIME;
+            } else {
+                newMode = Settings.SKIP_EARLY;
+            }
+            Settings.setSkipButtonMode(this, newMode);
         });
     }
 

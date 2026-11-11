@@ -72,6 +72,8 @@
     <string name="player_retry">Try again</string>
     <string name="player_auto">Auto</string>
     <string name="player_finished">Finished</string>
+    <string name="player_skip_op">Skip intro</string>
+    <string name="player_skip_ed">Skip outro</string>
 
     <string name="history_episode">Episode %1$s</string>
     <string name="history_watched">%1$s • %2$s</string>
@@ -101,6 +103,14 @@
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_hint">System follows your device setting.</string>
+
+    <string name="settings_section_playback">Playback</string>
+    <string name="settings_playback_hint">Control the skip button shown during openings and endings.</string>
+    <string name="settings_skip_button">Skip button</string>
+    <string name="settings_skip_button_hint">AniSkip provides the timestamps for the current episode.</string>
+    <string name="settings_skip_early">2s before</string>
+    <string name="settings_skip_on_time">On time</string>
+    <string name="settings_skip_off">Off</string>
 
     <string name="settings_section_online">Online services</string>
     <string name="settings_online_hint">Sync watch progress with MyAnimeList and AniList. Long-press a service to change its client ID.</string>

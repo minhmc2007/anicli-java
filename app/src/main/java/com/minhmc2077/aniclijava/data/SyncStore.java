@@ -133,6 +133,21 @@ public final class SyncStore {
         }
     }
 
+    public int malId(String animeId) {
+        Mapping mapping = mapping(animeId);
+        return mapping == null ? 0 : mapping.malId;
+    }
+
+    public void putMalId(String animeId, int malId) {
+        if (animeId == null || malId <= 0) {
+            return;
+        }
+        Mapping current = mapping(animeId);
+        putMapping(animeId, new Mapping(malId,
+                current == null ? 0 : current.anilistId,
+                current == null ? 0 : current.episodes));
+    }
+
     public void putMapping(String animeId, Mapping mapping) {
         if (animeId == null || mapping == null || mapping.isEmpty()) {
             return;

@@ -12,7 +12,12 @@ public final class Settings {
     private static final String PREFS = "settings";
     private static final String KEY_ACCENT = "accent";
     private static final String KEY_THEME = "theme";
+    private static final String KEY_SKIP_BUTTON = "skip_button";
     private static final String KEY_UPDATE_CHECK = "update_check";
+
+    public static final int SKIP_OFF = 0;
+    public static final int SKIP_ON_TIME = 1;
+    public static final int SKIP_EARLY = 2;
 
     public static final String ACCENT_BLUE = "blue";
     public static final String ACCENT_INDIGO = "indigo";
@@ -70,6 +75,14 @@ public final class Settings {
 
     public static void applyNightMode(Context context) {
         AppCompatDelegate.setDefaultNightMode(themeMode(context));
+    }
+
+    public static int skipButtonMode(Context context) {
+        return prefs(context).getInt(KEY_SKIP_BUTTON, SKIP_EARLY);
+    }
+
+    public static void setSkipButtonMode(Context context, int mode) {
+        prefs(context).edit().putInt(KEY_SKIP_BUTTON, mode).apply();
     }
 
     public static boolean updateCheckEnabled(Context context) {

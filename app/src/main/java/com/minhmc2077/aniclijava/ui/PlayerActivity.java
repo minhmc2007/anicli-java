@@ -39,6 +39,7 @@ import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.model.HistoryEntry;
 import com.minhmc2077.aniclijava.model.Quality;
+import com.minhmc2077.aniclijava.model.SkipTime;
 import com.minhmc2077.aniclijava.model.StreamInfo;
 import com.minhmc2077.aniclijava.net.CronetHttp;
 import com.minhmc2077.aniclijava.util.Ui;
@@ -60,6 +61,7 @@ public final class PlayerActivity extends BaseActivity {
     private static final long SEEK_STEP_MS = 5000L;
     private static final long SEEK_HINT_MS = 700L;
     private static final long LEVEL_HINT_MS = 800L;
+    private static final long SKIP_POLL_MS = 500L;
     private static final float BRIGHTNESS_MIN = 0.01f;
     private static final int SWIPE_NONE = 0;
     private static final int SWIPE_BRIGHTNESS = 1;
@@ -84,6 +86,7 @@ public final class PlayerActivity extends BaseActivity {
     private MaterialButton nextButton;
     private MaterialButton modeButton;
     private MaterialButton qualityButton;
+    private MaterialButton skipButton;
     private View stateView;
     private ProgressBar stateProgress;
     private TextView stateText;
@@ -99,6 +102,16 @@ public final class PlayerActivity extends BaseActivity {
     private final Runnable hideLevelHint = () -> {
         if (levelIndicator != null) {
             levelIndicator.setVisibility(View.GONE);
+        }
+    };
+    private final Runnable pollSkip = new Runnable() {
+        @Override
+        public void run() {
+            if (!skipPolling) {
+                return;
+            }
+            updateSkipButton();
+            handler.postDelayed(this, SKIP_POLL_MS);
         }
     };
 
@@ -122,6 +135,12 @@ public final class PlayerActivity extends BaseActivity {
     private long pendingSeekMs = -1L;
     private long resumePositionMs = -1L;
     private String lastSyncedEpisodeId;
+    private final List<SkipTime> skipTimes = new ArrayList<>();
+    private SkipTime activeSkip;
+    private String skipEpisodeId;
+    private int skipRequest;
+    private int skipButtonMode;
+    private boolean skipPolling;
     private int generation;
     private boolean destroyed;
 
@@ -161,6 +180,8 @@ public final class PlayerActivity extends BaseActivity {
         nextButton = findViewById(R.id.next_button);
         modeButton = findViewById(R.id.mode_button);
         qualityButton = findViewById(R.id.quality_button);
+        skipButton = findViewById(R.id.skip_button);
+        skipButtonMode = com.minhmc2077.aniclijava.util.Settings.skipButtonMode(this);
         playerView = findViewById(R.id.player_view);
         stateView = findViewById(R.id.state);
         stateProgress = findViewById(R.id.state_progress);
@@ -208,6 +229,7 @@ public final class PlayerActivity extends BaseActivity {
         });
         modeButton.setOnClickListener(v -> toggleMode());
         qualityButton.setOnClickListener(v -> showQualityMenu());
+        skipButton.setOnClickListener(v -> skipCurrent());
         retryButton.setOnClickListener(v -> resolveCurrent());
 
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
@@ -238,7 +260,10 @@ public final class PlayerActivity extends BaseActivity {
                         player.seekTo(resumePositionMs);
                     }
                     resumePositionMs = -1L;
+                    loadSkipTimes();
                 } else if (playbackState == Player.STATE_ENDED) {
+                    stopSkipPolling();
+                    hideSkipButton();
                     onPlaybackEnded();
                 }
             }
@@ -297,6 +322,10 @@ public final class PlayerActivity extends BaseActivity {
                         return;
                     }
                     stream = info;
+                    int malId = parseMalId(info.malId);
+                    if (malId > 0) {
+                        App.get().syncStore().putMalId(animeId, malId);
+                    }
                     selectedQuality = pickQuality(info);
                     updateQualityButton();
                     attachSource(info, selectedQuality);
@@ -331,6 +360,11 @@ public final class PlayerActivity extends BaseActivity {
         if (player == null || info == null || quality == null) {
             return;
         }
+        skipTimes.clear();
+        skipEpisodeId = null;
+        skipRequest++;
+        hideSkipButton();
+        stopSkipPolling();
         showLoading();
 
         long startMs;
@@ -353,6 +387,115 @@ public final class PlayerActivity extends BaseActivity {
         if (!episode.id.equals(lastSyncedEpisodeId)) {
             lastSyncedEpisodeId = episode.id;
             App.get().sync().pushEpisode(animeId, animeTitle, episode.number, false);
+        }
+    }
+
+    private void loadSkipTimes() {
+        if (skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_OFF || player == null || episode == null) {
+            return;
+        }
+        long duration = player.getDuration();
+        if (duration <= 0 || episode.id.equals(skipEpisodeId)) {
+            return;
+        }
+        int malId = stream == null ? 0 : parseMalId(stream.malId);
+        if (malId <= 0) {
+            malId = App.get().syncStore().malId(animeId);
+        }
+        if (malId <= 0) {
+            return;
+        }
+
+        final String episodeId = episode.id;
+        final String number = episode.number;
+        final int request = ++skipRequest;
+        final int resolvedMalId = malId;
+        skipEpisodeId = episodeId;
+
+        App.get().async(
+                () -> App.get().aniSkip().fetch(resolvedMalId, number, duration),
+                times -> {
+                    if (destroyed || request != skipRequest
+                            || !episodeId.equals(skipEpisodeId)) {
+                        return;
+                    }
+                    skipTimes.clear();
+                    skipTimes.addAll(times);
+                    if (!skipTimes.isEmpty()) {
+                        startSkipPolling();
+                    }
+                    updateSkipButton();
+                },
+                error -> {
+                    if (request == skipRequest) {
+                        skipEpisodeId = null;
+                    }
+                }
+        );
+    }
+
+    private void startSkipPolling() {
+        if (skipPolling) {
+            return;
+        }
+        skipPolling = true;
+        handler.post(pollSkip);
+    }
+
+    private void stopSkipPolling() {
+        skipPolling = false;
+        handler.removeCallbacks(pollSkip);
+    }
+
+    private void updateSkipButton() {
+        if (skipButton == null || player == null || skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_OFF
+                || player.getPlaybackState() != Player.STATE_READY) {
+            hideSkipButton();
+            return;
+        }
+        long lead = skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_EARLY ? 2000L : 0L;
+        long position = player.getCurrentPosition();
+        SkipTime match = null;
+        for (SkipTime skip : skipTimes) {
+            if (skip.contains(position, lead)) {
+                match = skip;
+                break;
+            }
+        }
+        if (match == null) {
+            hideSkipButton();
+            return;
+        }
+        activeSkip = match;
+        skipButton.setText(match.isEnding()
+                ? R.string.player_skip_ed
+                : R.string.player_skip_op);
+        skipButton.setVisibility(View.VISIBLE);
+    }
+
+    private void skipCurrent() {
+        if (player == null || activeSkip == null) {
+            return;
+        }
+        player.seekTo(activeSkip.endMs);
+        hideSkipButton();
+    }
+
+    private void hideSkipButton() {
+        activeSkip = null;
+        if (skipButton != null) {
+            skipButton.setVisibility(View.GONE);
+        }
+    }
+
+    private static int parseMalId(String value) {
+        if (TextUtils.isEmpty(value)) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ignored) {
+            return 0;
         }
     }
 
@@ -680,6 +823,9 @@ public final class PlayerActivity extends BaseActivity {
         super.onStart();
         handler.removeCallbacks(saveProgress);
         handler.postDelayed(saveProgress, SAVE_INTERVAL_MS);
+        if (!skipTimes.isEmpty() && skipButtonMode != com.minhmc2077.aniclijava.util.Settings.SKIP_OFF) {
+            startSkipPolling();
+        }
     }
 
     @Override
@@ -691,6 +837,8 @@ public final class PlayerActivity extends BaseActivity {
     @Override
     protected void onStop() {
         handler.removeCallbacks(saveProgress);
+        stopSkipPolling();
+        hideSkipButton();
         savePosition();
         if (player != null) {
             player.pause();
@@ -702,6 +850,8 @@ public final class PlayerActivity extends BaseActivity {
     protected void onDestroy() {
         destroyed = true;
         generation++;
+        skipRequest++;
+        stopSkipPolling();
         handler.removeCallbacksAndMessages(null);
         if (player != null) {
             player.release();
