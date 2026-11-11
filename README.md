@@ -28,11 +28,12 @@ older release.
 - **History** — resume the last watched episode and position.
 - **Detail** — poster, score, genres, synopsis, SUB/DUB switch, and an episode grid.
 - **Player** — quality selection, subtitles, previous/next episode, auto-next, and resume.
+- **AniSkip** — a skip button for openings and endings, powered by community timestamps from AniSkip. The timing can be offset two seconds early, kept on time, or turned off in Settings → Playback.
 - **Player gestures** — double-tap the left half of the player to go back 5 seconds, or the right half to go forward 5 seconds. Swipe up or down on the left half to change the app window's brightness, or on the right half to change playback volume.
 - **Airing alerts** — tap the megaphone on an anime page to get a notification when a newer episode appears upstream. Episode labels such as `5.5` or `2.5` are compared numerically.
 - **New episode badge** — favourites with a newer upstream episode than the last watched one show a small `New episode` label on the poster.
 - **Online services** — connect MyAnimeList or AniList to pull remote watch progress into History and upload local progress.
-- **Settings** — accent color, light/dark/system theme, MyAnimeList/AniList connections, app version, GitHub link, and update checks.
+- **Settings** — accent color, light/dark/system theme, skip button timing, MyAnimeList/AniList connections, app version, GitHub link, and update checks.
 - **Updates** — checks the latest GitHub release on startup when enabled, shows the release notes, downloads the APK, opens the system installer, and removes cached APKs once the installed version is current.
 
 ## Interface
@@ -52,8 +53,9 @@ player instance. Neither changes a system-wide setting or asks for a permission.
 1. Trending cards are parsed from the HiAnime home page.
 2. Search results come from the search page, and episode lists from the episode API.
 3. The ZokoAnime embed blob is base64-decoded and deobfuscated to obtain the stream.
-4. The HLS master playlist is parsed for qualities, optional audio, and subtitles.
-5. Playback uses Media3/ExoPlayer with a bundled Cronet engine for HTTP.
+4. The ZokoAnime embed URL carries the anime's MyAnimeList ID, which is cached per HiAnime ID and used to request AniSkip times for the current episode.
+5. The HLS master playlist is parsed for qualities, optional audio, and subtitles.
+6. Playback uses Media3/ExoPlayer with a bundled Cronet engine for HTTP.
 
 Favourites, history, settings, and sync tokens are stored in
 `SharedPreferences`. Sync is optional; without a connected service there is no

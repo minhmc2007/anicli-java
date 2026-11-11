@@ -7,6 +7,7 @@ import android.util.Log;
 
 import com.minhmc2077.aniclijava.data.AiringStore;
 import com.minhmc2077.aniclijava.data.AniRepository;
+import com.minhmc2077.aniclijava.data.AniSkipApi;
 import com.minhmc2077.aniclijava.data.FavouriteStore;
 import com.minhmc2077.aniclijava.data.HistoryStore;
 import com.minhmc2077.aniclijava.data.SyncStore;
@@ -37,6 +38,7 @@ public final class App extends Application {
     private Handler main;
     private CronetHttp http;
     private AniRepository repository;
+    private AniSkipApi aniSkip;
     private ImageLoader imageLoader;
     private FavouriteStore favourites;
     private HistoryStore history;
@@ -76,6 +78,7 @@ public final class App extends Application {
 
         http = new CronetHttp(cronetEngine, cronetCallbacks);
         repository = new AniRepository(http);
+        aniSkip = new AniSkipApi(http);
         imageLoader = new ImageLoader(this, http, io);
         favourites = new FavouriteStore(this);
         history = new HistoryStore(this);
@@ -103,6 +106,10 @@ public final class App extends Application {
 
     public AniRepository repository() {
         return repository;
+    }
+
+    public AniSkipApi aniSkip() {
+        return aniSkip;
     }
 
     public ImageLoader imageLoader() {
