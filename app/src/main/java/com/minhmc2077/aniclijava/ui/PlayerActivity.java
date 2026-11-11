@@ -42,7 +42,6 @@ import com.minhmc2077.aniclijava.model.Quality;
 import com.minhmc2077.aniclijava.model.SkipTime;
 import com.minhmc2077.aniclijava.model.StreamInfo;
 import com.minhmc2077.aniclijava.net.CronetHttp;
-import com.minhmc2077.aniclijava.util.Settings;
 import com.minhmc2077.aniclijava.util.Ui;
 
 import java.util.ArrayList;
@@ -182,7 +181,7 @@ public final class PlayerActivity extends BaseActivity {
         modeButton = findViewById(R.id.mode_button);
         qualityButton = findViewById(R.id.quality_button);
         skipButton = findViewById(R.id.skip_button);
-        skipButtonMode = Settings.skipButtonMode(this);
+        skipButtonMode = com.minhmc2077.aniclijava.util.Settings.skipButtonMode(this);
         playerView = findViewById(R.id.player_view);
         stateView = findViewById(R.id.state);
         stateProgress = findViewById(R.id.state_progress);
@@ -392,7 +391,7 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void loadSkipTimes() {
-        if (skipButtonMode == Settings.SKIP_OFF || player == null || episode == null) {
+        if (skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_OFF || player == null || episode == null) {
             return;
         }
         long duration = player.getDuration();
@@ -449,12 +448,12 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void updateSkipButton() {
-        if (skipButton == null || player == null || skipButtonMode == Settings.SKIP_OFF
+        if (skipButton == null || player == null || skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_OFF
                 || player.getPlaybackState() != Player.STATE_READY) {
             hideSkipButton();
             return;
         }
-        long lead = skipButtonMode == Settings.SKIP_EARLY ? 2000L : 0L;
+        long lead = skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_EARLY ? 2000L : 0L;
         long position = player.getCurrentPosition();
         SkipTime match = null;
         for (SkipTime skip : skipTimes) {
@@ -824,7 +823,7 @@ public final class PlayerActivity extends BaseActivity {
         super.onStart();
         handler.removeCallbacks(saveProgress);
         handler.postDelayed(saveProgress, SAVE_INTERVAL_MS);
-        if (!skipTimes.isEmpty() && skipButtonMode != Settings.SKIP_OFF) {
+        if (!skipTimes.isEmpty() && skipButtonMode != com.minhmc2077.aniclijava.util.Settings.SKIP_OFF) {
             startSkipPolling();
         }
     }
