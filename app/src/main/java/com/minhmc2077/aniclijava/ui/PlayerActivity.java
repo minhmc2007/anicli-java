@@ -121,6 +121,7 @@ public final class PlayerActivity extends BaseActivity {
     private int preferredHeight;
     private long pendingSeekMs = -1L;
     private long resumePositionMs = -1L;
+    private String lastSyncedEpisodeId;
     private int generation;
     private boolean destroyed;
 
@@ -349,6 +350,10 @@ public final class PlayerActivity extends BaseActivity {
 
         App.get().history().upsert(animeId, animeTitle, posterUrl, episode.number,
                 episode.id, mode, startMs);
+        if (!episode.id.equals(lastSyncedEpisodeId)) {
+            lastSyncedEpisodeId = episode.id;
+            App.get().sync().pushEpisode(animeId, animeTitle, episode.number, false);
+        }
     }
 
     private TrackSelectionParameters selectionFor(Quality quality) {
@@ -446,6 +451,7 @@ public final class PlayerActivity extends BaseActivity {
         if (episodeIndex >= 0 && episodeIndex + 1 < episodes.size()) {
             playEpisode(episodes.get(episodeIndex + 1));
         } else {
+            App.get().sync().pushEpisode(animeId, animeTitle, episode.number, true);
             showFinished();
         }
     }

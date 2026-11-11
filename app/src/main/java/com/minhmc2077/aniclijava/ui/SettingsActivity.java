@@ -5,8 +5,11 @@ import android.content.Intent;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.InputType;
+import android.text.format.DateUtils;
 import android.view.Gravity;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -15,13 +18,26 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatDelegate;
 
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.button.MaterialButtonToggleGroup;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.Version;
+import com.minhmc2077.aniclijava.data.SyncStore;
+import com.minhmc2077.aniclijava.sync.SyncAuth;
 import com.minhmc2077.aniclijava.util.Settings;
 import com.minhmc2077.aniclijava.util.Ui;
 
 public final class SettingsActivity extends BaseActivity {
+    private SyncStore syncStore;
+    private TextView malStatus;
+    private TextView anilistStatus;
+    private TextView syncLast;
+    private MaterialButton malButton;
+    private MaterialButton anilistButton;
+    private MaterialButton syncNowButton;
+    private boolean syncing;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -48,6 +64,211 @@ public final class SettingsActivity extends BaseActivity {
 
         findViewById(R.id.check_updates_button)
                 .setOnClickListener(v -> UpdatePrompt.check(this, true));
+
+        syncStore = App.get().syncStore();
+        malStatus = findViewById(R.id.mal_status);
+        anilistStatus = findViewById(R.id.anilist_status);
+        syncLast = findViewById(R.id.sync_last);
+        malButton = findViewById(R.id.mal_button);
+        anilistButton = findViewById(R.id.anilist_button);
+        syncNowButton = findViewById(R.id.sync_now_button);
+        malButton.setOnClickListener(v -> onServiceButton(SyncStore.MAL));
+        anilistButton.setOnClickListener(v -> onServiceButton(SyncStore.ANILIST));
+        malButton.setOnLongClickListener(v -> onServiceLongPress(SyncStore.MAL));
+        anilistButton.setOnLongClickListener(v -> onServiceLongPress(SyncStore.ANILIST));
+        syncNowButton.setOnClickListener(v -> syncNow());
+        refreshSyncRows();
+
+        if (savedInstanceState == null) {
+            handleSyncIntent(getIntent());
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleSyncIntent(intent);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (syncStore != null) {
+            refreshSyncRows();
+        }
+    }
+
+    private void onServiceButton(String service) {
+        if (syncStore.isConnected(service)) {
+            confirmDisconnect(service);
+        } else if (syncStore.clientId(service).isEmpty()) {
+            showSetup(service);
+        } else {
+            startAuth(service);
+        }
+    }
+
+    private boolean onServiceLongPress(String service) {
+        if (!syncStore.isConnected(service)) {
+            showSetup(service);
+        }
+        return true;
+    }
+
+    private void startAuth(String service) {
+        String error = SyncAuth.start(this, service);
+        if (error != null) {
+            Ui.toast(this, error);
+        }
+    }
+
+    private void showSetup(String service) {
+        int horizontal = dp(20);
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(horizontal, dp(4), horizontal, 0);
+
+        TextView message = new TextView(this);
+        message.setText(getString(R.string.sync_setup_message, serviceLabel(service),
+                syncStore.redirectUri(service)));
+        message.setTextSize(14);
+        container.addView(message);
+
+        EditText clientId = new EditText(this);
+        clientId.setHint(R.string.sync_client_id);
+        clientId.setSingleLine(true);
+        clientId.setText(syncStore.clientId(service));
+        container.addView(clientId);
+
+        EditText secret = null;
+        if (SyncStore.MAL.equals(service)) {
+            secret = new EditText(this);
+            secret.setHint(R.string.sync_client_secret);
+            secret.setSingleLine(true);
+            secret.setInputType(InputType.TYPE_CLASS_TEXT
+                    | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            secret.setText(syncStore.clientSecret(service));
+            container.addView(secret);
+        }
+        EditText secretField = secret;
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.sync_setup_title, serviceLabel(service)))
+                .setView(container)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.sync_save, (dialog, which) -> {
+                    String id = clientId.getText().toString().trim();
+                    if (id.isEmpty()) {
+                        Ui.toast(this, getString(R.string.sync_configure_first));
+                        return;
+                    }
+                    syncStore.setClient(service, id, secretField == null
+                            ? ""
+                            : secretField.getText().toString().trim());
+                    refreshSyncRows();
+                    startAuth(service);
+                })
+                .show();
+    }
+
+    private void confirmDisconnect(String service) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.sync_disconnect_title, serviceLabel(service)))
+                .setMessage(R.string.sync_disconnect_message)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.sync_disconnect, (dialog, which) -> {
+                    syncStore.clearSession(service);
+                    refreshSyncRows();
+                })
+                .show();
+    }
+
+    private void refreshSyncRows() {
+        if (syncStore == null) {
+            return;
+        }
+        updateServiceRow(SyncStore.MAL, malStatus, malButton);
+        updateServiceRow(SyncStore.ANILIST, anilistStatus, anilistButton);
+
+        long last = syncStore.lastSync();
+        if (last <= 0) {
+            syncLast.setText(R.string.sync_never);
+        } else {
+            syncLast.setText(getString(R.string.sync_last,
+                    DateUtils.getRelativeTimeSpanString(last, System.currentTimeMillis(),
+                            DateUtils.MINUTE_IN_MILLIS)));
+        }
+        syncNowButton.setEnabled(syncStore.hasConnection() && !syncing);
+    }
+
+    private void updateServiceRow(String service, TextView status, MaterialButton button) {
+        if (syncStore.isConnected(service)) {
+            String name = syncStore.userName(service);
+            status.setText(getString(R.string.sync_connected_as,
+                    name.isEmpty() ? serviceLabel(service) : name));
+            button.setText(R.string.sync_disconnect);
+        } else {
+            status.setText(R.string.sync_not_connected);
+            button.setText(R.string.sync_connect);
+        }
+    }
+
+    private void syncNow() {
+        if (syncing) {
+            return;
+        }
+        if (!syncStore.hasConnection()) {
+            Ui.toast(this, getString(R.string.sync_not_connected_hint));
+            return;
+        }
+        syncing = true;
+        syncNowButton.setText(R.string.sync_syncing);
+        syncNowButton.setEnabled(false);
+        App.get().sync().syncNow(result -> {
+            if (isFinishing() || isDestroyed()) {
+                return;
+            }
+            syncing = false;
+            syncNowButton.setText(R.string.sync_now);
+            refreshSyncRows();
+            Ui.toast(this, result.hasError()
+                    ? getString(R.string.sync_summary_error, result.pulled, result.pushed,
+                    result.error)
+                    : getString(R.string.sync_summary, result.pulled, result.pushed));
+        });
+    }
+
+    private void handleSyncIntent(Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        Uri data = intent.getData();
+        if (data == null || !"aniclijava".equals(data.getScheme())) {
+            return;
+        }
+        intent.setData(null);
+        Ui.toast(this, getString(R.string.sync_connecting));
+        SyncAuth.complete(this, data, (success, message) -> {
+            if (isFinishing() || isDestroyed()) {
+                return;
+            }
+            refreshSyncRows();
+            if (success) {
+                Ui.toast(this, message);
+                syncNow();
+            } else {
+                Ui.toast(this, message == null || message.isEmpty()
+                        ? getString(R.string.sync_failed)
+                        : message);
+            }
+        });
+    }
+
+    private String serviceLabel(String service) {
+        return getString(SyncStore.MAL.equals(service)
+                ? R.string.sync_mal
+                : R.string.sync_anilist);
     }
 
     private void buildAccentRow() {

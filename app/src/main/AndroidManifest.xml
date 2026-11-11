@@ -34,7 +34,27 @@
 
         <activity
             android:name=".ui.SettingsActivity"
-            android:exported="false" />
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="oauth"
+                    android:path="/mal"
+                    android:scheme="aniclijava" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="oauth"
+                    android:path="/anilist"
+                    android:scheme="aniclijava" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".ui.PlayerActivity"

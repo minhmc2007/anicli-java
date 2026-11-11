@@ -2,6 +2,8 @@ package com.minhmc2077.aniclijava.net;
 
 import org.chromium.net.CronetEngine;
 import org.chromium.net.CronetException;
+import org.chromium.net.UploadDataProvider;
+import org.chromium.net.UploadDataSink;
 import org.chromium.net.UrlRequest;
 import org.chromium.net.UrlResponseInfo;
 
@@ -62,7 +64,18 @@ public final class CronetHttp {
     }
 
     public Response get(String url, Map<String, String> headers, boolean disableCache) throws IOException {
-        final ByteArrayOutputStream body = new ByteArrayOutputStream();
+        return send("GET", url, headers, null, null, disableCache);
+    }
+
+    public Response request(String method, String url, Map<String, String> headers,
+                            String body, String contentType) throws IOException {
+        return send(method, url, headers, body, contentType, true);
+    }
+
+    private Response send(String method, String url, Map<String, String> headers,
+                          String body, String contentType, boolean disableCache)
+            throws IOException {
+        final ByteArrayOutputStream responseBody = new ByteArrayOutputStream();
         final int[] status = {0};
         final IOException[] failure = {null};
         final CountDownLatch latch = new CountDownLatch(1);
@@ -88,7 +101,7 @@ public final class CronetHttp {
                 if (buffer.hasRemaining()) {
                     byte[] chunk = new byte[buffer.remaining()];
                     buffer.get(chunk);
-                    body.write(chunk);
+                    responseBody.write(chunk);
                 }
                 buffer.clear();
                 request.read(buffer);
@@ -112,7 +125,8 @@ public final class CronetHttp {
             }
         };
 
-        UrlRequest request = requestBuilder(url, callback, headers, disableCache).build();
+        UrlRequest request = requestBuilder(method, url, callback, headers, body, contentType,
+                disableCache).build();
         request.start();
 
         try {
@@ -129,7 +143,7 @@ public final class CronetHttp {
         if (failure[0] != null) {
             throw failure[0];
         }
-        return new Response(status[0], body.toByteArray());
+        return new Response(status[0], responseBody.toByteArray());
     }
 
     public int download(String url, Map<String, String> headers, File target) throws IOException {
@@ -210,7 +224,8 @@ public final class CronetHttp {
             }
         };
 
-        UrlRequest request = requestBuilder(url, callback, headers, true).build();
+        UrlRequest request = requestBuilder("GET", url, callback, headers, null, null, true)
+                .build();
         request.start();
 
         try {
@@ -253,25 +268,36 @@ public final class CronetHttp {
         return -1L;
     }
 
-    private UrlRequest.Builder requestBuilder(String url, UrlRequest.Callback callback,
-                                              Map<String, String> headers, boolean disableCache) {
+    private UrlRequest.Builder requestBuilder(String method, String url,
+                                              UrlRequest.Callback callback,
+                                              Map<String, String> headers, String body,
+                                              String contentType, boolean disableCache) {
         UrlRequest.Builder builder =
                 engine.newUrlRequestBuilder(url, callback, callbackExecutor)
-                        .setHttpMethod("GET")
+                        .setHttpMethod(method)
                         .setPriority(UrlRequest.Builder.REQUEST_PRIORITY_HIGHEST);
 
+        if (body != null) {
+            builder.setUploadDataProvider(
+                    new BytesUploadProvider(body.getBytes(StandardCharsets.UTF_8)),
+                    callbackExecutor);
+        }
         if (disableCache) {
             builder.disableCache();
         }
 
         boolean hasAccept = false;
+        boolean hasContentType = false;
         if (headers != null) {
             for (Map.Entry<String, String> entry : headers.entrySet()) {
                 if (entry.getKey() == null || entry.getValue() == null) {
                     continue;
                 }
-                if ("accept".equals(entry.getKey().toLowerCase(Locale.US))) {
+                String name = entry.getKey().toLowerCase(Locale.US);
+                if ("accept".equals(name)) {
                     hasAccept = true;
+                } else if ("content-type".equals(name)) {
+                    hasContentType = true;
                 }
                 builder.addHeader(entry.getKey(), entry.getValue());
             }
@@ -279,8 +305,39 @@ public final class CronetHttp {
         if (!hasAccept) {
             builder.addHeader("Accept", DEFAULT_ACCEPT);
         }
+        if (!hasContentType && contentType != null) {
+            builder.addHeader("Content-Type", contentType);
+        }
         builder.addHeader("Accept-Language", "en-US,en;q=0.9");
         builder.addHeader("User-Agent", USER_AGENT);
         return builder;
+    }
+
+    private static final class BytesUploadProvider extends UploadDataProvider {
+        private final byte[] data;
+        private int offset;
+
+        BytesUploadProvider(byte[] data) {
+            this.data = data;
+        }
+
+        @Override
+        public long getLength() {
+            return data.length;
+        }
+
+        @Override
+        public void read(UploadDataSink sink, ByteBuffer buffer) {
+            int count = Math.min(buffer.remaining(), data.length - offset);
+            buffer.put(data, offset, count);
+            offset += count;
+            sink.onReadSucceeded(offset >= data.length);
+        }
+
+        @Override
+        public void rewind(UploadDataSink sink) {
+            offset = 0;
+            sink.onRewindSucceeded();
+        }
     }
 }

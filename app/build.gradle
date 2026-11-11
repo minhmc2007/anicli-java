@@ -11,6 +11,23 @@ def versionFromSource = { ->
     matcher.group(1)
 }
 
+def syncCredential = { property, environment ->
+    def value = System.getenv(environment)
+    if (!value) {
+        def local = new Properties()
+        def file = rootProject.file('local.properties')
+        if (file.exists()) {
+            file.withInputStream { local.load(it) }
+        }
+        value = local.getProperty(property, '')
+    }
+    value == null ? '' : value.trim()
+}
+
+def configString = { value ->
+    '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+}
+
 android {
     namespace 'com.minhmc2077.aniclijava'
     compileSdk 36
@@ -32,6 +49,13 @@ android {
         targetSdk 36
         versionCode 1
         versionName versionFromSource()
+
+        buildConfigField "String", "MAL_CLIENT_ID",
+                configString(syncCredential('mal.clientId', 'MAL_CLIENT_ID'))
+        buildConfigField "String", "MAL_CLIENT_SECRET",
+                configString(syncCredential('mal.clientSecret', 'MAL_CLIENT_SECRET'))
+        buildConfigField "String", "ANILIST_CLIENT_ID",
+                configString(syncCredential('anilist.clientId', 'ANILIST_CLIENT_ID'))
 
         vectorDrawables {
             useSupportLibrary true

@@ -31,7 +31,8 @@ older release.
 - **Player gestures** — double-tap the left half of the player to go back 5 seconds, or the right half to go forward 5 seconds. Swipe up or down on the left half to change the app window's brightness, or on the right half to change playback volume.
 - **Airing alerts** — tap the megaphone on an anime page to get a notification when a newer episode appears upstream. Episode labels such as `5.5` or `2.5` are compared numerically.
 - **New episode badge** — favourites with a newer upstream episode than the last watched one show a small `New episode` label on the poster.
-- **Settings** — accent color, light/dark/system theme, app version, GitHub link, and update checks.
+- **Online services** — connect MyAnimeList or AniList to pull remote watch progress into History and upload local progress.
+- **Settings** — accent color, light/dark/system theme, MyAnimeList/AniList connections, app version, GitHub link, and update checks.
 - **Updates** — checks the latest GitHub release on startup when enabled, shows the release notes, downloads the APK, opens the system installer, and removes cached APKs once the installed version is current.
 
 ## Interface
@@ -54,7 +55,8 @@ player instance. Neither changes a system-wide setting or asks for a permission.
 4. The HLS master playlist is parsed for qualities, optional audio, and subtitles.
 5. Playback uses Media3/ExoPlayer with a bundled Cronet engine for HTTP.
 
-Favourites, history, and settings are stored in `SharedPreferences`. There is no
+Favourites, history, settings, and sync tokens are stored in
+`SharedPreferences`. Sync is optional; without a connected service there is no
 account, server, or analytics service.
 
 ## Airing checks
@@ -71,13 +73,36 @@ Notifications need the Android 13+ notification permission. The app asks for it
 when alerts are enabled and only uses it for these local airing messages. The
 same background check keeps the `New episode` badge on the Favourites tab fresh.
 
+## Online services
+
+Settings → Online services can connect MyAnimeList and AniList. Sync is
+two-way: the app pulls remote watch progress into History and uploads local
+history to every connected service. Starting an episode uploads its progress,
+and finishing the last known episode marks the entry completed. Manual
+`Sync now` and the app start (at most once every six hours) run a full sync;
+starting or finishing an episode uploads that progress right away.
+
+Both services need an OAuth client. Register a developer app with the redirect
+URI shown in the connect dialog (`aniclijava://oauth/mal` or
+`aniclijava://oauth/anilist`), then paste the client ID. MyAnimeList also
+accepts a client secret when the registered app has one. Builds can provide
+default values through the `MAL_CLIENT_ID`, `MAL_CLIENT_SECRET`, and
+`ANILIST_CLIENT_ID` environment variables, or through the `mal.clientId`,
+`mal.clientSecret`, and `anilist.clientId` entries in `local.properties`.
+
+The app matches local anime to remote entries through the MyAnimeList and
+AniList search APIs and caches the resulting IDs. Only anime in History or
+Favourites are matched; remote entries without a local counterpart are skipped.
+MyAnimeList access tokens are refreshed automatically, while AniList tokens are
+long-lived and require reconnecting after they expire.
+
 ## Versioning and releases
 
 The app version lives in
 [`Version.java`](app/src/main/java/com/minhmc2077/aniclijava/Version.java):
 
 ```java
-public static final String NAME = "0.0.2";
+public static final String NAME = "0.0.4";
 ```
 
 Gradle reads this value for the APK `versionName`, so the Java constant is the
@@ -126,6 +151,7 @@ app/src/main/java/com/minhmc2077/aniclijava/
 ├── data/                    Scraping repository and local stores
 ├── model/                   Anime, Episode, StreamInfo, ReleaseInfo
 ├── net/                     Cronet HTTP, GitHub releases, image loader
+├── sync/                    OAuth and MyAnimeList/AniList API clients
 ├── ui/                      Activities, fragments, adapters, settings, update prompt
 └── util/                    HTML, time, settings, and UI helpers
 ```

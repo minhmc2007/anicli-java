@@ -82,6 +82,13 @@ public final class MainActivity extends BaseActivity {
             findViewById(R.id.root).post(() -> UpdatePrompt.check(this, false));
         }
         AiringChecker.refreshAsync(this, null);
+        if (savedInstanceState == null) {
+            App.get().sync().autoSync(result -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    refreshCurrentTab();
+                }
+            });
+        }
     }
 
     @Override
