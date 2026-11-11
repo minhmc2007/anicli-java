@@ -39,7 +39,7 @@ public final class MalApi {
         if (clientSecret != null && !clientSecret.isEmpty()) {
             body.append("&client_secret=").append(encode(clientSecret));
         }
-        return parseToken(tokenRequest(body.toString()));
+        return tokenRequest(body.toString());
     }
 
     public Token refresh(String clientId, String clientSecret, String refreshToken)
@@ -51,7 +51,7 @@ public final class MalApi {
         if (clientSecret != null && !clientSecret.isEmpty()) {
             body.append("&client_secret=").append(encode(clientSecret));
         }
-        return parseToken(tokenRequest(body.toString()));
+        return tokenRequest(body.toString());
     }
 
     public String userName(String token) throws IOException {
@@ -172,15 +172,6 @@ public final class MalApi {
         String accessToken = json.optString("access_token", "");
         if (accessToken.isEmpty()) {
             throw new IOException("MyAnimeList login failed");
-        }
-        return new Token(accessToken, json.optString("refresh_token", ""),
-                json.optLong("expires_in", 0L));
-    }
-
-    private Token parseToken(JSONObject json) throws IOException {
-        String accessToken = json.optString("access_token", "");
-        if (accessToken.isEmpty()) {
-            throw new IOException(errorMessage(json, "MyAnimeList login failed"));
         }
         return new Token(accessToken, json.optString("refresh_token", ""),
                 json.optLong("expires_in", 0L));
