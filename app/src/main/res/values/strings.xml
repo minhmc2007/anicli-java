@@ -72,6 +72,8 @@
     <string name="player_error_title">Could not play this episode</string>
     <string name="player_retry">Try again</string>
     <string name="player_auto">Auto</string>
+    <string name="player_auto_actual">Auto · %1$dp</string>
+    <string name="player_recovering">Resuming the full episode…</string>
     <string name="player_finished">Finished</string>
     <string name="player_skip_op">Skip intro</string>
     <string name="player_skip_ed">Skip outro</string>

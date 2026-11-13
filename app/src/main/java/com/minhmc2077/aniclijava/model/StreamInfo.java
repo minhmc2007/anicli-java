@@ -9,14 +9,21 @@ public final class StreamInfo {
     public final String referer;
     public final String malId;
     public final List<Quality> qualities;
+    public final long durationMs;
 
     public StreamInfo(String masterUrl, String subtitleUrl, String referer,
                       String malId, List<Quality> qualities) {
+        this(masterUrl, subtitleUrl, referer, malId, qualities, 0L);
+    }
+
+    public StreamInfo(String masterUrl, String subtitleUrl, String referer,
+                      String malId, List<Quality> qualities, long durationMs) {
         this.masterUrl = masterUrl;
         this.subtitleUrl = subtitleUrl;
         this.referer = referer;
         this.malId = malId;
         this.qualities = qualities == null ? Collections.emptyList() : qualities;
+        this.durationMs = Math.max(0L, durationMs);
     }
 
     public Quality bestQuality() {
@@ -24,5 +31,15 @@ public final class StreamInfo {
             return new Quality("Auto", 0, masterUrl);
         }
         return qualities.get(0);
+    }
+
+    public int minPlayableHeight() {
+        int min = 0;
+        for (Quality quality : qualities) {
+            if (quality.height > 0 && (min == 0 || quality.height < min)) {
+                min = quality.height;
+            }
+        }
+        return min;
     }
 }
