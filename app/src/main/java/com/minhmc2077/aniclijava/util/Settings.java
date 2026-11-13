@@ -13,11 +13,16 @@ public final class Settings {
     private static final String KEY_ACCENT = "accent";
     private static final String KEY_THEME = "theme";
     private static final String KEY_SKIP_BUTTON = "skip_button";
+    private static final String KEY_BUFFER_MINUTES = "buffer_minutes";
     private static final String KEY_UPDATE_CHECK = "update_check";
 
     public static final int SKIP_OFF = 0;
     public static final int SKIP_ON_TIME = 1;
     public static final int SKIP_EARLY = 2;
+
+    public static final int BUFFER_MIN_MINUTES = 1;
+    public static final int BUFFER_MAX_MINUTES = 10;
+    private static final int BUFFER_DEFAULT_MINUTES = 2;
 
     public static final String ACCENT_BLUE = "blue";
     public static final String ACCENT_INDIGO = "indigo";
@@ -83,6 +88,16 @@ public final class Settings {
 
     public static void setSkipButtonMode(Context context, int mode) {
         prefs(context).edit().putInt(KEY_SKIP_BUTTON, mode).apply();
+    }
+
+    public static int bufferMinutes(Context context) {
+        int minutes = prefs(context).getInt(KEY_BUFFER_MINUTES, BUFFER_DEFAULT_MINUTES);
+        return Math.max(BUFFER_MIN_MINUTES, Math.min(BUFFER_MAX_MINUTES, minutes));
+    }
+
+    public static void setBufferMinutes(Context context, int minutes) {
+        int clamped = Math.max(BUFFER_MIN_MINUTES, Math.min(BUFFER_MAX_MINUTES, minutes));
+        prefs(context).edit().putInt(KEY_BUFFER_MINUTES, clamped).apply();
     }
 
     public static boolean updateCheckEnabled(Context context) {

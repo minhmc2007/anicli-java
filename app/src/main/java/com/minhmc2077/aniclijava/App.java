@@ -10,7 +10,9 @@ import com.minhmc2077.aniclijava.data.AniRepository;
 import com.minhmc2077.aniclijava.data.AniSkipApi;
 import com.minhmc2077.aniclijava.data.FavouriteStore;
 import com.minhmc2077.aniclijava.data.HistoryStore;
+import com.minhmc2077.aniclijava.data.OfflineStore;
 import com.minhmc2077.aniclijava.data.SyncStore;
+import com.minhmc2077.aniclijava.download.AniDownloadService;
 import com.minhmc2077.aniclijava.net.CronetHttp;
 import com.minhmc2077.aniclijava.net.ImageLoader;
 import com.minhmc2077.aniclijava.sync.AniListApi;
@@ -21,8 +23,18 @@ import com.minhmc2077.aniclijava.util.Settings;
 
 import org.chromium.net.CronetEngine;
 
+import androidx.media3.database.DatabaseProvider;
+import androidx.media3.database.StandaloneDatabaseProvider;
+import androidx.media3.datasource.cache.NoOpCacheEvictor;
+import androidx.media3.datasource.cache.SimpleCache;
+import androidx.media3.datasource.cronet.CronetDataSource;
+import androidx.media3.exoplayer.offline.DownloadManager;
+import androidx.media3.exoplayer.offline.DownloadNotificationHelper;
+
 import java.io.File;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,12 +51,18 @@ public final class App extends Application {
     private CronetHttp http;
     private AniRepository repository;
     private AniSkipApi aniSkip;
+    private OfflineStore offline;
     private ImageLoader imageLoader;
     private FavouriteStore favourites;
     private HistoryStore history;
     private AiringStore airing;
     private SyncStore syncStore;
     private SyncManager sync;
+    private DatabaseProvider databaseProvider;
+    private SimpleCache mediaCache;
+    private CronetDataSource.Factory downloadDataSourceFactory;
+    private DownloadManager downloadManager;
+    private DownloadNotificationHelper downloadNotifications;
 
     public static App get() {
         return instance;
@@ -79,12 +97,28 @@ public final class App extends Application {
         http = new CronetHttp(cronetEngine, cronetCallbacks);
         repository = new AniRepository(http);
         aniSkip = new AniSkipApi(http);
+        offline = new OfflineStore(this);
         imageLoader = new ImageLoader(this, http, io);
         favourites = new FavouriteStore(this);
         history = new HistoryStore(this);
         airing = new AiringStore(this);
         syncStore = new SyncStore(this);
         sync = new SyncManager(this, syncStore, new MalApi(http), new AniListApi(http));
+
+        File media = new File(getFilesDir(), "media");
+        if (!media.exists()) {
+            //noinspection ResultOfMethodCallIgnored
+            media.mkdirs();
+        }
+        databaseProvider = new StandaloneDatabaseProvider(this);
+        mediaCache = new SimpleCache(media, new NoOpCacheEvictor(), databaseProvider);
+        downloadDataSourceFactory = new CronetDataSource.Factory(cronetEngine, cronetCallbacks);
+        setDownloadReferer(null);
+        downloadManager = new DownloadManager(
+                this, databaseProvider, mediaCache, downloadDataSourceFactory, io);
+        downloadNotifications = new DownloadNotificationHelper(
+                this, AniDownloadService.CHANNEL_ID);
+
         AiringAlarm.sync(this);
     }
 
@@ -110,6 +144,35 @@ public final class App extends Application {
 
     public AniSkipApi aniSkip() {
         return aniSkip;
+    }
+
+    public OfflineStore offline() {
+        return offline;
+    }
+
+    public SimpleCache mediaCache() {
+        return mediaCache;
+    }
+
+    public DownloadManager downloadManager() {
+        return downloadManager;
+    }
+
+    public DownloadNotificationHelper downloadNotifications() {
+        return downloadNotifications;
+    }
+
+    public CronetDataSource.Factory downloadDataSourceFactory() {
+        return downloadDataSourceFactory;
+    }
+
+    public void setDownloadReferer(String referer) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("User-Agent", CronetHttp.USER_AGENT);
+        if (referer != null && !referer.isEmpty()) {
+            headers.put("Referer", referer);
+        }
+        downloadDataSourceFactory.setDefaultRequestProperties(headers);
     }
 
     public ImageLoader imageLoader() {

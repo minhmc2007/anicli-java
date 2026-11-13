@@ -31,6 +31,7 @@ public final class MainActivity extends BaseActivity {
     private static final String TAG_SEARCH = "tab_search";
     private static final String TAG_FAVOURITES = "tab_favourites";
     private static final String TAG_HISTORY = "tab_history";
+    private static final String KEY_CURRENT_TAB = "current_tab";
 
     private MaterialToolbar toolbar;
     private BottomNavigationView bottomNavigation;
@@ -55,7 +56,7 @@ public final class MainActivity extends BaseActivity {
 
         int startTab = savedInstanceState == null
                 ? R.id.nav_home
-                : bottomNavigation.getSelectedItemId();
+                : savedInstanceState.getInt(KEY_CURRENT_TAB, R.id.nav_home);
         bottomNavigation.setSelectedItemId(startTab);
         switchTab(startTab);
         bottomNavigation.setOnItemSelectedListener(item -> {
@@ -89,6 +90,12 @@ public final class MainActivity extends BaseActivity {
                 }
             });
         }
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt(KEY_CURRENT_TAB, currentTab);
     }
 
     @Override

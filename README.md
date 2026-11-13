@@ -29,11 +29,13 @@ older release.
 - **Detail** — poster, score, genres, synopsis, SUB/DUB switch, and an episode grid.
 - **Player** — quality selection, subtitles, previous/next episode, auto-next, and resume.
 - **AniSkip** — a skip button for openings and endings, powered by community timestamps from AniSkip. The timing can be offset two seconds early, kept on time, or turned off in Settings → Playback.
+- **Offline downloads** — download the next episode from the player or Settings → Playback. Downloads run in a foreground service with a progress notification, keep the four newest episodes, and play from the cache. A partially downloaded episode plays its cached parts and fetches the rest online when a connection is available.
+- **Buffer ahead** — Settings → Playback sets how far ahead ExoPlayer loads the episode, from 1 to 10 minutes.
 - **Player gestures** — double-tap the left half of the player to go back 5 seconds, or the right half to go forward 5 seconds. Swipe up or down on the left half to change the app window's brightness, or on the right half to change playback volume.
 - **Airing alerts** — tap the megaphone on an anime page to get a notification when a newer episode appears upstream. Episode labels such as `5.5` or `2.5` are compared numerically.
 - **New episode badge** — favourites with a newer upstream episode than the last watched one show a small `New episode` label on the poster.
 - **Online services** — connect MyAnimeList or AniList to pull remote watch progress into History and upload local progress.
-- **Settings** — accent color, light/dark/system theme, skip button timing, MyAnimeList/AniList connections, app version, GitHub link, and update checks.
+- **Settings** — accent color, light/dark/system theme, skip button timing, buffer-ahead size, next-episode downloads, MyAnimeList/AniList connections, app version, GitHub link, and update checks.
 - **Updates** — checks the latest GitHub release on startup when enabled, shows the release notes, downloads the APK, opens the system installer, and removes cached APKs once the installed version is current.
 
 ## Interface
@@ -56,10 +58,13 @@ player instance. Neither changes a system-wide setting or asks for a permission.
 4. The ZokoAnime embed URL carries the anime's MyAnimeList ID, which is cached per HiAnime ID and used to request AniSkip times for the current episode.
 5. The HLS master playlist is parsed for qualities, optional audio, and subtitles.
 6. Playback uses Media3/ExoPlayer with a bundled Cronet engine for HTTP.
+7. Downloads and playback share one Media3 `SimpleCache`. Playback opens it read-only, so a partially downloaded episode serves its cached segments locally and fetches the rest online.
 
 Favourites, history, settings, and sync tokens are stored in
-`SharedPreferences`. Sync is optional; without a connected service there is no
-account, server, or analytics service.
+`SharedPreferences`. Downloaded media lives in the app's private files
+directory, with per-episode stream metadata in `SharedPreferences`. Sync is
+optional; without a connected service there is no account, server, or analytics
+service.
 
 ## Airing checks
 
