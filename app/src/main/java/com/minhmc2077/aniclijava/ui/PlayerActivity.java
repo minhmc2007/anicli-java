@@ -21,11 +21,15 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
+import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.common.Tracks;
+import androidx.media3.common.VideoSize;
+import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.cache.CacheDataSink;
 import androidx.media3.datasource.cache.CacheDataSource;
 import androidx.media3.datasource.cronet.CronetDataSource;
@@ -41,6 +45,7 @@ import com.google.android.material.button.MaterialButton;
 import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.cache.ContentCacheKeyFactory;
+import com.minhmc2077.aniclijava.cache.PlaylistFreshDataSourceFactory;
 import com.minhmc2077.aniclijava.download.EpisodeDownloads;
 import com.minhmc2077.aniclijava.download.NextEpisodePrefetcher;
 import com.minhmc2077.aniclijava.model.Anime;
@@ -174,6 +179,8 @@ public final class PlayerActivity extends BaseActivity {
     private boolean destroyed;
     private boolean playingOffline;
     private boolean retriedOnline;
+    private boolean autoQuality = true;
+    private boolean recoveredShortStream;
     private String autoDownloadKey;
     private NextEpisodePrefetcher prefetcher;
 
@@ -318,8 +325,21 @@ public final class PlayerActivity extends BaseActivity {
                 } else if (playbackState == Player.STATE_ENDED) {
                     stopSkipPolling();
                     hideSkipButton();
+                    if (recoverShortEnding()) {
+                        return;
+                    }
                     onPlaybackEnded();
                 }
+            }
+
+            @Override
+            public void onTracksChanged(@NonNull Tracks tracks) {
+                updateQualityButton();
+            }
+
+            @Override
+            public void onVideoSizeChanged(@NonNull VideoSize videoSize) {
+                updateQualityButton();
             }
 
             @Override
@@ -411,11 +431,9 @@ public final class PlayerActivity extends BaseActivity {
             throws Exception {
         Download download = EpisodeDownloads.download(animeId, target.number, targetMode);
         boolean completed = download != null && download.state == Download.STATE_COMPLETED;
-        if (preferOffline) {
+        if (preferOffline && completed) {
             StreamInfo cached = App.get().offline().stream(animeId, target.number, targetMode);
-            if (cached != null && !TextUtils.isEmpty(cached.masterUrl)
-                    && (completed || EpisodeDownloads.hasCachedContent(
-                            animeId, target.number, targetMode))) {
+            if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
                 return new ResolvedStream(cached, true);
             }
         }
@@ -433,6 +451,7 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void applyStream(StreamInfo info) {
+        stream = info;
         int malId = parseMalId(info.malId);
         if (malId > 0) {
             App.get().syncStore().putMalId(animeId, malId);
@@ -448,10 +467,27 @@ public final class PlayerActivity extends BaseActivity {
             return new Quality("Auto", 0, info.masterUrl);
         }
         if (preferredHeight > 0) {
+            Quality higher = null;
+            Quality lower = null;
             for (Quality quality : info.qualities) {
                 if (quality.height == preferredHeight) {
                     return quality;
                 }
+                if (quality.height > preferredHeight
+                        && (higher == null || quality.height < higher.height)) {
+                    higher = quality;
+                }
+                if (quality.height < preferredHeight
+                        && (lower == null || quality.height > lower.height)) {
+                    lower = quality;
+                }
+            }
+            // The previous height is gone (for example a truncated variant was
+            // dropped): step up first, then fall back to the nearest lower one.
+            Quality fallback = higher != null ? higher : lower;
+            if (fallback != null) {
+                preferredHeight = fallback.height;
+                return fallback;
             }
         }
         Quality best = info.bestQuality();
@@ -463,6 +499,7 @@ public final class PlayerActivity extends BaseActivity {
         if (player == null || info == null || quality == null) {
             return;
         }
+        recoveredShortStream = false;
         skipTimes.clear();
         skipEpisodeId = null;
         skipRequest++;
@@ -480,8 +517,8 @@ public final class PlayerActivity extends BaseActivity {
         }
         resumePositionMs = startMs;
 
-        player.setTrackSelectionParameters(selectionFor(quality));
-        player.setMediaSource(buildMediaSource(info));
+        player.setTrackSelectionParameters(selectionFor());
+        player.setMediaSource(buildMediaSource(info, quality.url));
         player.prepare();
         player.setPlayWhenReady(true);
 
@@ -603,32 +640,29 @@ public final class PlayerActivity extends BaseActivity {
         }
     }
 
-    private TrackSelectionParameters selectionFor(Quality quality) {
-        TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters()
+    private TrackSelectionParameters selectionFor() {
+        return player.getTrackSelectionParameters()
                 .buildUpon()
                 .setPreferredTextLanguage("en")
-                .setSelectUndeterminedTextLanguage(true);
-        if (quality != null && quality.height > 0) {
-            builder.setMaxVideoSize(Integer.MAX_VALUE, quality.height);
-        } else {
-            builder.setMaxVideoSize(Integer.MAX_VALUE, Integer.MAX_VALUE);
-        }
-        return builder.build();
+                .setSelectUndeterminedTextLanguage(true)
+                .build();
     }
 
-    private MediaSource buildMediaSource(StreamInfo info) {
+    private MediaSource buildMediaSource(StreamInfo info, String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", CronetHttp.USER_AGENT);
         if (!TextUtils.isEmpty(info.referer)) {
             headers.put("Referer", info.referer);
+            Uri referer = Uri.parse(info.referer);
+            if (referer.getScheme() != null && referer.getAuthority() != null) {
+                headers.put("Origin", referer.getScheme() + "://" + referer.getAuthority());
+            }
         }
         dataSourceFactory.setDefaultRequestProperties(headers);
 
-        // Play the master playlist so ExoPlayer owns variant and audio-rendition
-        // selection. Loading a variant directly and merging its audio as a
-        // second, independently-timed source can desynchronise playback.
+        // Play the exact variant so the player cannot drift onto a broken one.
         MediaItem.Builder item = new MediaItem.Builder()
-                .setUri(info.masterUrl)
+                .setUri(TextUtils.isEmpty(url) ? info.masterUrl : url)
                 .setMimeType(MimeTypes.APPLICATION_M3U8);
         if (!TextUtils.isEmpty(info.subtitleUrl)) {
             MediaItem.SubtitleConfiguration subtitle =
@@ -641,7 +675,12 @@ public final class PlayerActivity extends BaseActivity {
             item.setSubtitleConfigurations(Collections.singletonList(subtitle));
         }
 
-        return new DefaultMediaSourceFactory(cacheSource()).createMediaSource(item.build());
+        return new DefaultMediaSourceFactory(streamingSource()).createMediaSource(item.build());
+    }
+
+    private DataSource.Factory streamingSource() {
+        return new PlaylistFreshDataSourceFactory(cacheSource(), dataSourceFactory,
+                !playingOffline);
     }
 
     private CacheDataSource.Factory cacheSource() {
@@ -673,27 +712,46 @@ public final class PlayerActivity extends BaseActivity {
             return;
         }
         PopupMenu menu = new PopupMenu(this, qualityButton);
+        menu.getMenu().add(0, 0, 0, getString(R.string.player_auto));
         for (int i = 0; i < stream.qualities.size(); i++) {
-            menu.getMenu().add(0, i, i, stream.qualities.get(i).label);
+            menu.getMenu().add(0, i + 1, i + 1, stream.qualities.get(i).label);
         }
         menu.setOnMenuItemClickListener(item -> {
             if (stream == null || item.getItemId() < 0
-                    || item.getItemId() >= stream.qualities.size()) {
+                    || item.getItemId() > stream.qualities.size()) {
                 return true;
             }
-            Quality quality = stream.qualities.get(item.getItemId());
-            if (selectedQuality != null && quality.url.equals(selectedQuality.url)) {
-                return true;
+            Quality quality;
+            if (item.getItemId() == 0) {
+                if (autoQuality) {
+                    return true;
+                }
+                autoQuality = true;
+                preferredHeight = 0;
+                quality = stream.bestQuality();
+            } else {
+                quality = stream.qualities.get(item.getItemId() - 1);
+                if (!autoQuality && selectedQuality != null
+                        && quality.url.equals(selectedQuality.url)) {
+                    return true;
+                }
+                autoQuality = false;
+                preferredHeight = quality.height;
             }
-            preferredHeight = quality.height;
             selectedQuality = quality;
             updateQualityButton();
-            if (player != null) {
-                player.setTrackSelectionParameters(selectionFor(quality));
-            }
+            switchQuality(quality);
             return true;
         });
         menu.show();
+    }
+
+    private void switchQuality(Quality quality) {
+        if (player == null || stream == null || quality == null) {
+            return;
+        }
+        pendingSeekMs = Math.max(0L, player.getCurrentPosition());
+        attachSource(stream, quality);
     }
 
     private Episode nextEpisode() {
@@ -945,6 +1003,24 @@ public final class PlayerActivity extends BaseActivity {
         resolveCurrent();
     }
 
+    private boolean recoverShortEnding() {
+        if (recoveredShortStream || player == null || stream == null
+                || stream.durationMs <= 0L || stream.qualities.isEmpty()) {
+            return false;
+        }
+        long played = player.getDuration();
+        if (played <= 0L || played >= stream.durationMs * 8L / 10L) {
+            return false;
+        }
+        Quality quality = stream.bestQuality();
+        long position = Math.max(0L, player.getCurrentPosition());
+        pendingSeekMs = Math.max(0L, position - 1_000L);
+        Ui.toast(this, getString(R.string.player_recovering));
+        attachSource(stream, quality);
+        recoveredShortStream = true;
+        return true;
+    }
+
     private void onPlaybackEnded() {
         App.get().history().updatePosition(animeId, episode.number, 0L);
         if (episodeIndex >= 0 && episodeIndex + 1 < episodes.size()) {
@@ -978,9 +1054,24 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void updateQualityButton() {
+        if (autoQuality) {
+            int height = selectedVideoHeight();
+            qualityButton.setText(height > 0
+                    ? getString(R.string.player_auto_actual, height)
+                    : getString(R.string.player_auto));
+            return;
+        }
         qualityButton.setText(selectedQuality == null
                 ? getString(R.string.player_auto)
                 : selectedQuality.label);
+    }
+
+    private int selectedVideoHeight() {
+        if (player == null) {
+            return 0;
+        }
+        Format format = player.getVideoFormat();
+        return format == null ? 0 : Math.max(0, format.height);
     }
 
     private void updateNavigation() {

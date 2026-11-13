@@ -27,7 +27,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -95,6 +97,10 @@ public final class AniRepository {
     private static final Pattern BLOB = Pattern.compile("window\\.__P=\"([^\"]*)\"");
     private static final Pattern MAL_ID = Pattern.compile("/mal/([0-9]+)/");
     private static final Pattern RESOLUTION = Pattern.compile("RESOLUTION=\\d+x(\\d+)");
+    private static final Pattern EXTINF = Pattern.compile("#EXTINF:\\s*([0-9.]+)");
+
+    /** Variants shorter than this fraction of the longest one are truncated. */
+    private static final double FULL_LENGTH_RATIO = 0.8d;
 
     private final CronetHttp http;
     private final Map<String, List<Episode>> episodeCache = new ConcurrentHashMap<>();
@@ -275,9 +281,10 @@ public final class AniRepository {
         playlistHeaders.put("Referer", referer);
         playlistHeaders.put("Origin", referer.substring(0, Math.max(0, referer.length() - 1)));
         String playlist = fetch(masterUrl, playlistHeaders);
-        List<Quality> qualities = parseQualities(playlist, masterUrl);
+        Qualities measured = parseQualities(playlist, masterUrl, playlistHeaders);
 
-        return new StreamInfo(masterUrl, subtitleUrl, referer, malId, qualities);
+        return new StreamInfo(masterUrl, subtitleUrl, referer, malId,
+                measured.qualities, measured.durationMs);
     }
 
     private List<Anime> parseTrending(String html) {
@@ -458,7 +465,8 @@ public final class AniRepository {
         }
     }
 
-    private static List<Quality> parseQualities(String playlist, String masterUrl) {
+    private Qualities parseQualities(String playlist, String masterUrl,
+                                     Map<String, String> headers) {
         List<Quality> result = new ArrayList<>();
         String[] lines = playlist.split("\\r?\\n");
         for (int i = 0; i < lines.length; i++) {
@@ -491,8 +499,9 @@ public final class AniRepository {
         }
 
         if (result.isEmpty()) {
-            result.add(new Quality("Auto", 0, masterUrl));
-            return result;
+            List<Quality> fallback = new ArrayList<>();
+            fallback.add(new Quality("Auto", 0, masterUrl));
+            return new Qualities(fallback, 0L);
         }
 
         Collections.sort(result, (a, b) -> Integer.compare(b.height, a.height));
@@ -500,7 +509,90 @@ public final class AniRepository {
         for (Quality quality : result) {
             deduped.put(quality.url, quality);
         }
-        return new ArrayList<>(deduped.values());
+        return measureQualities(new ArrayList<>(deduped.values()), headers);
+    }
+
+    /**
+     * Reads each variant's media playlist and drops the ones whose runtime is
+     * clearly shorter than the rest.
+     */
+    private Qualities measureQualities(List<Quality> candidates, Map<String, String> headers) {
+        if (candidates.size() < 2) {
+            long duration = 0L;
+            if (candidates.size() == 1) {
+                duration = measure(candidates.get(0), headers);
+            }
+            return new Qualities(candidates, Math.max(0L, duration));
+        }
+
+        List<CompletableFuture<Long>> pending = new ArrayList<>();
+        for (Quality quality : candidates) {
+            final Quality variant = quality;
+            pending.add(CompletableFuture.supplyAsync(() -> measure(variant, headers)));
+        }
+
+        long[] durations = new long[candidates.size()];
+        long longest = 0L;
+        int measuredCount = 0;
+        for (int i = 0; i < pending.size(); i++) {
+            long duration;
+            try {
+                duration = pending.get(i).get(20L, TimeUnit.SECONDS);
+            } catch (Exception error) {
+                duration = -1L;
+            }
+            durations[i] = duration;
+            if (duration > 0L) {
+                measuredCount++;
+                longest = Math.max(longest, duration);
+            }
+        }
+
+        if (measuredCount < 2 || longest <= 0L) {
+            return new Qualities(candidates, Math.max(0L, longest));
+        }
+
+        List<Quality> playable = new ArrayList<>();
+        long threshold = (long) (longest * FULL_LENGTH_RATIO);
+        for (int i = 0; i < candidates.size(); i++) {
+            long duration = durations[i];
+            // Keep variants we could not measure; only drop proven-short ones.
+            if (duration > 0L && duration < threshold) {
+                continue;
+            }
+            playable.add(candidates.get(i));
+        }
+        return new Qualities(playable.isEmpty() ? candidates : playable, longest);
+    }
+
+    private long measure(Quality quality, Map<String, String> headers) {
+        try {
+            return playlistDurationMs(fetch(quality.url, headers));
+        } catch (Exception error) {
+            return -1L;
+        }
+    }
+
+    private static long playlistDurationMs(String playlist) {
+        Matcher matcher = EXTINF.matcher(playlist);
+        double total = 0d;
+        while (matcher.find()) {
+            try {
+                total += Double.parseDouble(matcher.group(1));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return total > 0d ? Math.round(total * 1000d) : -1L;
+    }
+
+    private static final class Qualities {
+        final List<Quality> qualities;
+        final long durationMs;
+
+        Qualities(List<Quality> qualities, long durationMs) {
+            this.qualities = qualities;
+            this.durationMs = durationMs;
+        }
     }
 
     private String fetch(String url) throws IOException {

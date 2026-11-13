@@ -2,6 +2,7 @@ package com.minhmc2077.aniclijava.download;
 
 import android.content.Context;
 import android.net.Uri;
+import android.text.TextUtils;
 
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
@@ -93,8 +94,11 @@ public final class EpisodeDownloads {
     public static void enqueue(Context context, String animeId, Episode episode, String mode,
                                StreamInfo info, Callback callback) {
         App.get().setDownloadReferer(info.referer);
+        String streamUrl = info.qualities.isEmpty()
+                ? info.masterUrl
+                : info.qualities.get(0).url;
         MediaItem item = new MediaItem.Builder()
-                .setUri(Uri.parse(info.masterUrl))
+                .setUri(Uri.parse(TextUtils.isEmpty(streamUrl) ? info.masterUrl : streamUrl))
                 .setMimeType(MimeTypes.APPLICATION_M3U8)
                 .build();
         DownloadHelper helper = new DownloadHelper.Factory()
