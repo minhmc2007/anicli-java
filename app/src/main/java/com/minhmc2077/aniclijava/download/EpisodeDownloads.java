@@ -3,6 +3,7 @@ package com.minhmc2077.aniclijava.download;
 import android.content.Context;
 import android.net.Uri;
 
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
@@ -76,6 +77,17 @@ public final class EpisodeDownloads {
         } catch (IOException ignored) {
             return null;
         }
+    }
+
+    public static boolean hasCachedContent(String animeId, String episodeNumber, String mode) {
+        String prefix = id(animeId, episodeNumber, mode) + "|";
+        for (String key : App.get().mediaCache().getKeys()) {
+            if (key.startsWith(prefix)
+                    && App.get().mediaCache().getCachedBytes(key, 0, C.LENGTH_UNSET) > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void enqueue(Context context, String animeId, Episode episode, String mode,

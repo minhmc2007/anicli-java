@@ -131,7 +131,7 @@
     <string name="settings_cache_limit">Cache limit</string>
     <string name="settings_cache_view">View cached data</string>
     <string name="settings_download_next">Download next episode</string>
-    <string name="settings_download_next_hint">While an episode plays, the next one is downloaded in the background. The four newest downloads are kept.</string>
+    <string name="settings_download_next_hint">While an episode plays, the next one is prefetched up to the buffer-ahead size. With Whole episode it is downloaded fully. The four newest downloads are kept.</string>
 
     <string name="settings_section_online">Online services</string>
     <string name="settings_online_hint">Sync watch progress with MyAnimeList and AniList. Long-press a service to change its client ID.</string>

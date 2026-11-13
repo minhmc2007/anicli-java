@@ -42,6 +42,7 @@ import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.cache.ContentCacheKeyFactory;
 import com.minhmc2077.aniclijava.download.EpisodeDownloads;
+import com.minhmc2077.aniclijava.download.NextEpisodePrefetcher;
 import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.model.HistoryEntry;
@@ -174,6 +175,7 @@ public final class PlayerActivity extends BaseActivity {
     private boolean playingOffline;
     private boolean retriedOnline;
     private String autoDownloadKey;
+    private NextEpisodePrefetcher prefetcher;
 
     public static void start(Context context, Anime anime, Episode episode, String mode) {
         Intent intent = new Intent(context, PlayerActivity.class);
@@ -263,7 +265,10 @@ public final class PlayerActivity extends BaseActivity {
         qualityButton.setOnClickListener(v -> showQualityMenu());
         skipButton.setOnClickListener(v -> skipCurrent());
         downloadButton.setOnClickListener(v -> downloadNextEpisode(true));
-        retryButton.setOnClickListener(v -> resolveCurrent());
+        retryButton.setOnClickListener(v -> {
+            rememberPosition();
+            resolveCurrent();
+        });
 
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
         playerView.setControllerAutoShow(true);
@@ -321,9 +326,11 @@ public final class PlayerActivity extends BaseActivity {
             public void onPlayerError(@NonNull PlaybackException error) {
                 if (playingOffline && !retriedOnline) {
                     retriedOnline = true;
+                    rememberPosition();
                     resolveCurrent();
                     return;
                 }
+                rememberPosition();
                 showError(App.get().friendlyError(error));
             }
         });
@@ -403,9 +410,12 @@ public final class PlayerActivity extends BaseActivity {
     private ResolvedStream resolveStream(Episode target, String targetMode, boolean preferOffline)
             throws Exception {
         Download download = EpisodeDownloads.download(animeId, target.number, targetMode);
-        if (preferOffline && download != null && download.state == Download.STATE_COMPLETED) {
+        boolean completed = download != null && download.state == Download.STATE_COMPLETED;
+        if (preferOffline) {
             StreamInfo cached = App.get().offline().stream(animeId, target.number, targetMode);
-            if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
+            if (cached != null && !TextUtils.isEmpty(cached.masterUrl)
+                    && (completed || EpisodeDownloads.hasCachedContent(
+                            animeId, target.number, targetMode))) {
                 return new ResolvedStream(cached, true);
             }
         }
@@ -648,6 +658,8 @@ public final class PlayerActivity extends BaseActivity {
 
     private void toggleMode() {
         long position = player == null ? 0L : Math.max(0L, player.getCurrentPosition());
+        cancelPrefetch();
+        autoDownloadKey = null;
         pendingSeekMs = position;
         mode = "dub".equals(mode) ? "sub" : "dub";
         playingOffline = false;
@@ -736,12 +748,14 @@ public final class PlayerActivity extends BaseActivity {
         if (key.equals(autoDownloadKey)) {
             return;
         }
+        cancelPrefetch();
         autoDownloadKey = key;
         downloadNextEpisode(false);
     }
 
     private void downloadNextEpisode(boolean announce) {
         final Episode current = episode;
+        final String requestedMode = mode;
         if (current == null) {
             return;
         }
@@ -772,7 +786,8 @@ public final class PlayerActivity extends BaseActivity {
             Ui.toast(this, getString(R.string.player_download_preparing));
         }
         App.get().async(
-                () -> EpisodeDownloads.resolveNext(animeId, current.number, current.id, mode),
+                () -> EpisodeDownloads.resolveNext(animeId, current.number, current.id,
+                        requestedMode),
                 target -> {
                     if (destroyed) {
                         return;
@@ -784,8 +799,16 @@ public final class PlayerActivity extends BaseActivity {
                         }
                         return;
                     }
-                    EpisodeDownloads.enqueue(this, animeId, target.episode, mode, target.info,
-                            new EpisodeDownloads.Callback() {
+                    int minutes = com.minhmc2077.aniclijava.util.Settings
+                            .bufferMinutes(this);
+                    if (!announce && minutes
+                            != com.minhmc2077.aniclijava.util.Settings.BUFFER_UNLIMITED) {
+                        startPrefetch(target, requestedMode, minutes);
+                        refreshNextDownload();
+                        return;
+                    }
+                    EpisodeDownloads.enqueue(this, animeId, target.episode, requestedMode,
+                            target.info, new EpisodeDownloads.Callback() {
                                 @Override
                                 public void onQueued() {
                                     if (destroyed) {
@@ -822,6 +845,48 @@ public final class PlayerActivity extends BaseActivity {
                     }
                 }
         );
+    }
+
+    private void startPrefetch(EpisodeDownloads.Target target, String targetMode, int minutes) {
+        cancelPrefetch();
+        int height = selectedQuality == null ? 0 : selectedQuality.height;
+        NextEpisodePrefetcher task = new NextEpisodePrefetcher(
+                animeId, target.episode, targetMode, target.info, height, minutes);
+        prefetcher = task;
+        App.get().async(
+                () -> {
+                    task.run();
+                    return null;
+                },
+                ignored -> clearPrefetcher(task),
+                error -> clearPrefetcher(task)
+        );
+    }
+
+    private void clearPrefetcher(NextEpisodePrefetcher task) {
+        if (prefetcher == task) {
+            prefetcher = null;
+        }
+    }
+
+    private void cancelPrefetch() {
+        NextEpisodePrefetcher task = prefetcher;
+        prefetcher = null;
+        if (task != null) {
+            task.cancel();
+        }
+    }
+
+    private void rememberPosition() {
+        if (player == null || stream == null || pendingSeekMs >= 0) {
+            return;
+        }
+        long position = player.getCurrentPosition();
+        if (position <= 0) {
+            return;
+        }
+        pendingSeekMs = position;
+        savePosition();
     }
 
     private void updateDownloadButton() {
@@ -868,6 +933,8 @@ public final class PlayerActivity extends BaseActivity {
             return;
         }
         savePosition();
+        cancelPrefetch();
+        autoDownloadKey = null;
         episode = next;
         pendingSeekMs = -1L;
         playingOffline = false;
@@ -1112,6 +1179,12 @@ public final class PlayerActivity extends BaseActivity {
         super.onStart();
         App.get().downloadManager().addListener(downloadListener);
         refreshNextDownload();
+        if (com.minhmc2077.aniclijava.util.Settings.autoDownloadNext(this)) {
+            maybeAutoDownloadNext();
+        } else {
+            cancelPrefetch();
+            autoDownloadKey = null;
+        }
         handler.removeCallbacks(saveProgress);
         handler.postDelayed(saveProgress, SAVE_INTERVAL_MS);
         if (!skipTimes.isEmpty() && skipButtonMode != com.minhmc2077.aniclijava.util.Settings.SKIP_OFF) {
@@ -1143,6 +1216,7 @@ public final class PlayerActivity extends BaseActivity {
         destroyed = true;
         generation++;
         skipRequest++;
+        cancelPrefetch();
         stopSkipPolling();
         handler.removeCallbacksAndMessages(null);
         if (player != null) {
