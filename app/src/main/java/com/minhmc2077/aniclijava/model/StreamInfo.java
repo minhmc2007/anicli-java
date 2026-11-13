@@ -32,14 +32,4 @@ public final class StreamInfo {
         }
         return qualities.get(0);
     }
-
-    public int minPlayableHeight() {
-        int min = 0;
-        for (Quality quality : qualities) {
-            if (quality.height > 0 && (min == 0 || quality.height < min)) {
-                min = quality.height;
-            }
-        }
-        return min;
-    }
 }

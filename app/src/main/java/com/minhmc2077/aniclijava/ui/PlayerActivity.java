@@ -496,10 +496,6 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void attachSource(StreamInfo info, Quality quality) {
-        attachSource(info, quality, null);
-    }
-
-    private void attachSource(StreamInfo info, Quality quality, String variantUrl) {
         if (player == null || info == null || quality == null) {
             return;
         }
@@ -521,8 +517,8 @@ public final class PlayerActivity extends BaseActivity {
         }
         resumePositionMs = startMs;
 
-        player.setTrackSelectionParameters(selectionFor(quality));
-        player.setMediaSource(buildMediaSource(info, variantUrl));
+        player.setTrackSelectionParameters(selectionFor());
+        player.setMediaSource(buildMediaSource(info, quality.url));
         player.prepare();
         player.setPlayWhenReady(true);
 
@@ -644,25 +640,15 @@ public final class PlayerActivity extends BaseActivity {
         }
     }
 
-    private TrackSelectionParameters selectionFor(Quality quality) {
-        TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters()
+    private TrackSelectionParameters selectionFor() {
+        return player.getTrackSelectionParameters()
                 .buildUpon()
                 .setPreferredTextLanguage("en")
-                .setSelectUndeterminedTextLanguage(true);
-        int minHeight = stream == null ? 0 : stream.minPlayableHeight();
-        int maxHeight = quality != null && quality.height > 0
-                ? quality.height
-                : Integer.MAX_VALUE;
-        if (minHeight > 0) {
-            builder.setMinVideoSize(1, Math.min(minHeight, maxHeight));
-        } else {
-            builder.setMinVideoSize(0, 0);
-        }
-        builder.setMaxVideoSize(Integer.MAX_VALUE, maxHeight);
-        return builder.build();
+                .setSelectUndeterminedTextLanguage(true)
+                .build();
     }
 
-    private MediaSource buildMediaSource(StreamInfo info, String variantUrl) {
+    private MediaSource buildMediaSource(StreamInfo info, String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", CronetHttp.USER_AGENT);
         if (!TextUtils.isEmpty(info.referer)) {
@@ -674,9 +660,9 @@ public final class PlayerActivity extends BaseActivity {
         }
         dataSourceFactory.setDefaultRequestProperties(headers);
 
-        // Play the master so ExoPlayer can adapt between the healthy variants.
+        // Play the exact variant so the player cannot drift onto a broken one.
         MediaItem.Builder item = new MediaItem.Builder()
-                .setUri(TextUtils.isEmpty(variantUrl) ? info.masterUrl : variantUrl)
+                .setUri(TextUtils.isEmpty(url) ? info.masterUrl : url)
                 .setMimeType(MimeTypes.APPLICATION_M3U8);
         if (!TextUtils.isEmpty(info.subtitleUrl)) {
             MediaItem.SubtitleConfiguration subtitle =
@@ -735,31 +721,37 @@ public final class PlayerActivity extends BaseActivity {
                     || item.getItemId() > stream.qualities.size()) {
                 return true;
             }
+            Quality quality;
             if (item.getItemId() == 0) {
+                if (autoQuality) {
+                    return true;
+                }
                 autoQuality = true;
                 preferredHeight = 0;
-                selectedQuality = stream.bestQuality();
-                updateQualityButton();
-                if (player != null) {
-                    player.setTrackSelectionParameters(selectionFor(selectedQuality));
+                quality = stream.bestQuality();
+            } else {
+                quality = stream.qualities.get(item.getItemId() - 1);
+                if (!autoQuality && selectedQuality != null
+                        && quality.url.equals(selectedQuality.url)) {
+                    return true;
                 }
-                return true;
+                autoQuality = false;
+                preferredHeight = quality.height;
             }
-            Quality quality = stream.qualities.get(item.getItemId() - 1);
-            if (!autoQuality && selectedQuality != null
-                    && quality.url.equals(selectedQuality.url)) {
-                return true;
-            }
-            autoQuality = false;
-            preferredHeight = quality.height;
             selectedQuality = quality;
             updateQualityButton();
-            if (player != null) {
-                player.setTrackSelectionParameters(selectionFor(quality));
-            }
+            switchQuality(quality);
             return true;
         });
         menu.show();
+    }
+
+    private void switchQuality(Quality quality) {
+        if (player == null || stream == null || quality == null) {
+            return;
+        }
+        pendingSeekMs = Math.max(0L, player.getCurrentPosition());
+        attachSource(stream, quality);
     }
 
     private Episode nextEpisode() {
@@ -1020,11 +1012,11 @@ public final class PlayerActivity extends BaseActivity {
         if (played <= 0L || played >= stream.durationMs * 8L / 10L) {
             return false;
         }
-        Quality quality = selectedQuality != null ? selectedQuality : stream.bestQuality();
+        Quality quality = stream.bestQuality();
         long position = Math.max(0L, player.getCurrentPosition());
         pendingSeekMs = Math.max(0L, position - 1_000L);
         Ui.toast(this, getString(R.string.player_recovering));
-        attachSource(stream, quality, quality.url);
+        attachSource(stream, quality);
         recoveredShortStream = true;
         return true;
     }
