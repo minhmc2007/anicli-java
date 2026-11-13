@@ -241,13 +241,27 @@
                     android:textColor="?attr/colorOnSurface" />
             </LinearLayout>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/download_next_button"
-                style="@style/Widget.AniCli.Button.Outlined"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="@string/settings_download_next" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/settings_download_next"
+                    android:textAppearance="?attr/textAppearanceTitleSmall"
+                    android:textColor="?attr/colorOnSurface" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/download_next_switch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="48dp" />
+            </LinearLayout>
 
             <TextView
                 android:layout_width="match_parent"

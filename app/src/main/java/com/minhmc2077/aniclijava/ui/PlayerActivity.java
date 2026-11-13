@@ -173,6 +173,7 @@ public final class PlayerActivity extends BaseActivity {
     private boolean destroyed;
     private boolean playingOffline;
     private boolean retriedOnline;
+    private String autoDownloadKey;
 
     public static void start(Context context, Anime anime, Episode episode, String mode) {
         Intent intent = new Intent(context, PlayerActivity.class);
@@ -261,7 +262,7 @@ public final class PlayerActivity extends BaseActivity {
         modeButton.setOnClickListener(v -> toggleMode());
         qualityButton.setOnClickListener(v -> showQualityMenu());
         skipButton.setOnClickListener(v -> skipCurrent());
-        downloadButton.setOnClickListener(v -> downloadNextEpisode());
+        downloadButton.setOnClickListener(v -> downloadNextEpisode(true));
         retryButton.setOnClickListener(v -> resolveCurrent());
 
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
@@ -308,6 +309,7 @@ public final class PlayerActivity extends BaseActivity {
                     }
                     resumePositionMs = -1L;
                     loadSkipTimes();
+                    maybeAutoDownloadNext();
                 } else if (playbackState == Player.STATE_ENDED) {
                     stopSkipPolling();
                     hideSkipButton();
@@ -347,6 +349,7 @@ public final class PlayerActivity extends BaseActivity {
                     updateEpisodeIndex();
                     updateNavigation();
                     refreshNextDownload();
+                    maybeAutoDownloadNext();
                 },
                 error -> {
                     if (!destroyed) {
@@ -721,34 +724,64 @@ public final class PlayerActivity extends BaseActivity {
         );
     }
 
-    private void downloadNextEpisode() {
+    private void maybeAutoDownloadNext() {
+        if (episode == null
+                || !com.minhmc2077.aniclijava.util.Settings.autoDownloadNext(this)) {
+            return;
+        }
+        if (nextEpisode() == null) {
+            return;
+        }
+        String key = EpisodeDownloads.id(animeId, episode.number, mode);
+        if (key.equals(autoDownloadKey)) {
+            return;
+        }
+        autoDownloadKey = key;
+        downloadNextEpisode(false);
+    }
+
+    private void downloadNextEpisode(boolean announce) {
+        final Episode current = episode;
+        if (current == null) {
+            return;
+        }
         Episode next = nextEpisode();
         if (next == null) {
-            Ui.toast(this, getString(R.string.player_download_no_next));
+            if (announce) {
+                Ui.toast(this, getString(R.string.player_download_no_next));
+            }
             return;
         }
         if (nextDownload != null) {
             if (nextDownload.state == Download.STATE_COMPLETED) {
-                Ui.toast(this, getString(R.string.player_download_done, next.number));
+                if (announce) {
+                    Ui.toast(this, getString(R.string.player_download_done, next.number));
+                }
                 return;
             }
             if (nextDownload.state == Download.STATE_QUEUED
                     || nextDownload.state == Download.STATE_DOWNLOADING) {
-                Ui.toast(this, getString(R.string.player_download_queued, next.number));
+                if (announce) {
+                    Ui.toast(this, getString(R.string.player_download_queued, next.number));
+                }
                 return;
             }
         }
         downloadButton.setEnabled(false);
-        Ui.toast(this, getString(R.string.player_download_preparing));
+        if (announce) {
+            Ui.toast(this, getString(R.string.player_download_preparing));
+        }
         App.get().async(
-                () -> EpisodeDownloads.resolveNext(animeId, episode.number, episode.id, mode),
+                () -> EpisodeDownloads.resolveNext(animeId, current.number, current.id, mode),
                 target -> {
                     if (destroyed) {
                         return;
                     }
                     if (target == null) {
                         refreshNextDownload();
-                        Ui.toast(this, getString(R.string.player_download_no_next));
+                        if (announce) {
+                            Ui.toast(this, getString(R.string.player_download_no_next));
+                        }
                         return;
                     }
                     EpisodeDownloads.enqueue(this, animeId, target.episode, mode, target.info,
@@ -759,9 +792,11 @@ public final class PlayerActivity extends BaseActivity {
                                         return;
                                     }
                                     refreshNextDownload();
-                                    Ui.toast(PlayerActivity.this,
-                                            getString(R.string.player_download_queued,
-                                                    target.episode.number));
+                                    if (announce) {
+                                        Ui.toast(PlayerActivity.this,
+                                                getString(R.string.player_download_queued,
+                                                        target.episode.number));
+                                    }
                                 }
 
                                 @Override
@@ -770,8 +805,10 @@ public final class PlayerActivity extends BaseActivity {
                                         return;
                                     }
                                     refreshNextDownload();
-                                    Ui.toast(PlayerActivity.this,
-                                            getString(R.string.player_download_failed));
+                                    if (announce) {
+                                        Ui.toast(PlayerActivity.this,
+                                                getString(R.string.player_download_failed));
+                                    }
                                 }
                             });
                 },
@@ -780,7 +817,9 @@ public final class PlayerActivity extends BaseActivity {
                         return;
                     }
                     refreshNextDownload();
-                    Ui.toast(this, getString(R.string.player_download_failed));
+                    if (announce) {
+                        Ui.toast(this, getString(R.string.player_download_failed));
+                    }
                 }
         );
     }

@@ -20,7 +20,7 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatDelegate;
-import androidx.media3.exoplayer.offline.Download;
+import androidx.appcompat.widget.SwitchCompat;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
@@ -31,13 +31,9 @@ import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.Version;
 import com.minhmc2077.aniclijava.cache.CacheActivity;
 import com.minhmc2077.aniclijava.data.SyncStore;
-import com.minhmc2077.aniclijava.download.EpisodeDownloads;
-import com.minhmc2077.aniclijava.model.HistoryEntry;
 import com.minhmc2077.aniclijava.sync.SyncAuth;
 import com.minhmc2077.aniclijava.util.Settings;
 import com.minhmc2077.aniclijava.util.Ui;
-
-import java.util.List;
 
 public final class SettingsActivity extends BaseActivity {
     private static final int CACHE_STEPS = 1000;
@@ -49,7 +45,7 @@ public final class SettingsActivity extends BaseActivity {
     private MaterialButton malButton;
     private MaterialButton anilistButton;
     private MaterialButton syncNowButton;
-    private MaterialButton downloadNextButton;
+    private SwitchCompat downloadNextSwitch;
     private SeekBar bufferSeek;
     private TextView bufferValue;
     private SeekBar cacheSeek;
@@ -57,7 +53,6 @@ public final class SettingsActivity extends BaseActivity {
     private TextView cacheUsage;
     private long pendingCacheLimit;
     private boolean syncing;
-    private boolean preparingDownload;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable applyCacheLimit = new Runnable() {
@@ -542,91 +537,10 @@ public final class SettingsActivity extends BaseActivity {
     }
 
     private void setUpDownloadNext() {
-        downloadNextButton = findViewById(R.id.download_next_button);
-        downloadNextButton.setOnClickListener(v -> downloadNextEpisode());
-    }
-
-    private void downloadNextEpisode() {
-        if (preparingDownload) {
-            return;
-        }
-        List<HistoryEntry> entries = App.get().history().getAll();
-        if (entries.isEmpty()) {
-            Ui.toast(this, getString(R.string.settings_download_no_history));
-            return;
-        }
-        HistoryEntry entry = entries.get(0);
-        preparingDownload = true;
-        downloadNextButton.setEnabled(false);
-        downloadNextButton.setText(R.string.settings_download_preparing);
-
-        App.get().async(
-                () -> EpisodeDownloads.resolveNext(entry.animeId, entry.episodeNumber,
-                        entry.episodeId, entry.mode),
-                target -> {
-                    if (isFinishing() || isDestroyed()) {
-                        return;
-                    }
-                    if (target == null) {
-                        finishDownloadAttempt();
-                        Ui.toast(this, getString(R.string.settings_download_no_next));
-                        return;
-                    }
-                    Download existing = EpisodeDownloads.download(entry.animeId,
-                            target.episode.number, entry.mode);
-                    if (existing != null && existing.state == Download.STATE_COMPLETED) {
-                        finishDownloadAttempt();
-                        Ui.toast(this, getString(R.string.player_download_done,
-                                target.episode.number));
-                        return;
-                    }
-                    if (existing != null && (existing.state == Download.STATE_QUEUED
-                            || existing.state == Download.STATE_DOWNLOADING)) {
-                        finishDownloadAttempt();
-                        Ui.toast(this, getString(R.string.settings_download_queued,
-                                target.episode.number));
-                        return;
-                    }
-                    EpisodeDownloads.enqueue(this, entry.animeId, target.episode, entry.mode,
-                            target.info, new EpisodeDownloads.Callback() {
-                                @Override
-                                public void onQueued() {
-                                    if (isFinishing() || isDestroyed()) {
-                                        return;
-                                    }
-                                    finishDownloadAttempt();
-                                    Ui.toast(SettingsActivity.this,
-                                            getString(R.string.settings_download_queued,
-                                                    target.episode.number));
-                                }
-
-                                @Override
-                                public void onError(Exception error) {
-                                    if (isFinishing() || isDestroyed()) {
-                                        return;
-                                    }
-                                    finishDownloadAttempt();
-                                    Ui.toast(SettingsActivity.this,
-                                            getString(R.string.player_download_failed));
-                                }
-                            });
-                },
-                error -> {
-                    if (isFinishing() || isDestroyed()) {
-                        return;
-                    }
-                    finishDownloadAttempt();
-                    Ui.toast(this, getString(R.string.player_download_failed));
-                }
-        );
-    }
-
-    private void finishDownloadAttempt() {
-        preparingDownload = false;
-        if (downloadNextButton != null) {
-            downloadNextButton.setEnabled(true);
-            downloadNextButton.setText(R.string.settings_download_next);
-        }
+        downloadNextSwitch = findViewById(R.id.download_next_switch);
+        downloadNextSwitch.setChecked(Settings.autoDownloadNext(this));
+        downloadNextSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
+                Settings.setAutoDownloadNext(this, isChecked));
     }
 
     private void openRepository() {

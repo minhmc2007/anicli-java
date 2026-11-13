@@ -131,11 +131,7 @@
     <string name="settings_cache_limit">Cache limit</string>
     <string name="settings_cache_view">View cached data</string>
     <string name="settings_download_next">Download next episode</string>
-    <string name="settings_download_next_hint">Uses the most recent history entry. Downloads run in the background and keep the last four episodes.</string>
-    <string name="settings_download_no_history">Nothing in history to download from yet.</string>
-    <string name="settings_download_no_next">There is no next episode to download.</string>
-    <string name="settings_download_preparing">Preparing download…</string>
-    <string name="settings_download_queued">Download queued for episode %1$s.</string>
+    <string name="settings_download_next_hint">While an episode plays, the next one is downloaded in the background. The four newest downloads are kept.</string>
 
     <string name="settings_section_online">Online services</string>
     <string name="settings_online_hint">Sync watch progress with MyAnimeList and AniList. Long-press a service to change its client ID.</string>

@@ -15,6 +15,7 @@ public final class Settings {
     private static final String KEY_SKIP_BUTTON = "skip_button";
     private static final String KEY_BUFFER_MINUTES = "buffer_minutes";
     private static final String KEY_CACHE_MAX_BYTES = "cache_max_bytes";
+    private static final String KEY_AUTO_DOWNLOAD_NEXT = "auto_download_next";
     private static final String KEY_UPDATE_CHECK = "update_check";
 
     public static final int SKIP_OFF = 0;
@@ -114,6 +115,14 @@ public final class Settings {
     public static void setCacheMaxBytes(Context context, long bytes) {
         long clamped = Math.max(CACHE_MIN_BYTES, Math.min(CACHE_MAX_BYTES, bytes));
         prefs(context).edit().putLong(KEY_CACHE_MAX_BYTES, clamped).apply();
+    }
+
+    public static boolean autoDownloadNext(Context context) {
+        return prefs(context).getBoolean(KEY_AUTO_DOWNLOAD_NEXT, false);
+    }
+
+    public static void setAutoDownloadNext(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(KEY_AUTO_DOWNLOAD_NEXT, enabled).apply();
     }
 
     public static boolean updateCheckEnabled(Context context) {

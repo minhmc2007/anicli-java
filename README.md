@@ -29,14 +29,14 @@ older release.
 - **Detail** — poster, score, genres, synopsis, SUB/DUB switch, and an episode grid.
 - **Player** — quality selection, subtitles, previous/next episode, auto-next, and resume.
 - **AniSkip** — a skip button for openings and endings, powered by community timestamps from AniSkip. The timing can be offset two seconds early, kept on time, or turned off in Settings → Playback.
-- **Offline downloads** — download the next episode from the player or Settings → Playback. Downloads run in a foreground service with a progress notification and keep the four newest episodes. Choosing a downloaded episode plays from local data first and only uses the network for parts that are missing from the cache.
+- **Offline downloads** — the player can save the next episode on demand. Settings → Playback → Download next episode is a toggle that keeps saving the following episode in the background while you watch. Downloads run in a foreground service with a progress notification and keep the four newest episodes. Choosing a downloaded episode plays from local data first and only uses the network for parts that are missing from the cache.
 - **Buffer ahead** — Settings → Playback sets how far ahead ExoPlayer loads the episode, from 1 to 10 minutes or the whole episode. Everything played is written to the cache, so an unlimited buffer keeps filling the episode to local storage as playback continues.
 - **Cache** — Settings → Cache shows the current usage and sets a soft limit from 100 MB to 10 GB. When the limit is reached, the least recently used data is removed first. A deeper page shows a segmented usage bar and the cached episodes grouped by anime, with the same color used for each group icon.
 - **Player gestures** — double-tap the left half of the player to go back 5 seconds, or the right half to go forward 5 seconds. Swipe up or down on the left half to change the app window's brightness, or on the right half to change playback volume.
 - **Airing alerts** — tap the megaphone on an anime page to get a notification when a newer episode appears upstream. Episode labels such as `5.5` or `2.5` are compared numerically.
 - **New episode badge** — favourites with a newer upstream episode than the last watched one show a small `New episode` label on the poster.
 - **Online services** — connect MyAnimeList or AniList to pull remote watch progress into History and upload local progress.
-- **Settings** — accent color, light/dark/system theme, skip button timing, buffer-ahead size, next-episode downloads, cache limit and cache details, MyAnimeList/AniList connections, app version, GitHub link, and update checks.
+- **Settings** — accent color, light/dark/system theme, skip button timing, buffer-ahead size, automatic next-episode downloads, cache limit and cache details, MyAnimeList/AniList connections, app version, GitHub link, and update checks.
 - **Updates** — checks the latest GitHub release on startup when enabled, shows the release notes, downloads the APK, opens the system installer, and removes cached APKs once the installed version is current.
 
 ## Interface
