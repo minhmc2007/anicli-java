@@ -27,12 +27,6 @@ jobs:
       - name: Build debug APKs
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Build release APK
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
-
-      - name: Show signing key
-        run: ./gradlew :app:signingReport --no-daemon
-
       - name: Prepare debug APKs
         run: |
           mkdir -p dist/debug

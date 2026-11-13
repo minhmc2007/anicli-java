@@ -93,7 +93,18 @@ android {
         buildConfig true
     }
 
+    androidResources {
+        // The app ships English only; drop library translations.
+        localeFilters += ['en']
+    }
+
     packaging {
+        jniLibs {
+            useLegacyPackaging = false
+            // Cronet's native libraries are already stripped, so keep AGP from
+            // trying (and warning) to strip them again.
+            keepDebugSymbols += ['**/libcronet*.so']
+        }
         resources {
             excludes += [
                     'META-INF/DEPENDENCIES',
