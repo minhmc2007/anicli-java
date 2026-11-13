@@ -5,8 +5,11 @@ import android.content.Intent;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.text.format.DateUtils;
+import android.text.format.Formatter;
 import android.view.Gravity;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -26,6 +29,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.Version;
+import com.minhmc2077.aniclijava.cache.CacheActivity;
 import com.minhmc2077.aniclijava.data.SyncStore;
 import com.minhmc2077.aniclijava.download.EpisodeDownloads;
 import com.minhmc2077.aniclijava.model.HistoryEntry;
@@ -36,6 +40,8 @@ import com.minhmc2077.aniclijava.util.Ui;
 import java.util.List;
 
 public final class SettingsActivity extends BaseActivity {
+    private static final int CACHE_STEPS = 1000;
+
     private SyncStore syncStore;
     private TextView malStatus;
     private TextView anilistStatus;
@@ -46,8 +52,29 @@ public final class SettingsActivity extends BaseActivity {
     private MaterialButton downloadNextButton;
     private SeekBar bufferSeek;
     private TextView bufferValue;
+    private SeekBar cacheSeek;
+    private TextView cacheValue;
+    private TextView cacheUsage;
+    private long pendingCacheLimit;
     private boolean syncing;
     private boolean preparingDownload;
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable applyCacheLimit = new Runnable() {
+        @Override
+        public void run() {
+            final long bytes = pendingCacheLimit;
+            App.get().async(
+                    () -> {
+                        App.get().setCacheLimitBytes(bytes);
+                        return null;
+                    },
+                    ignored -> refreshCacheUsage(),
+                    error -> {
+                    }
+            );
+        }
+    };
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -64,6 +91,7 @@ public final class SettingsActivity extends BaseActivity {
         setUpThemeGroup();
         setUpSkipButtonGroup();
         setUpBuffer();
+        setUpCache();
         setUpDownloadNext();
 
         findViewById(R.id.github_button).setOnClickListener(v -> openRepository());
@@ -110,6 +138,20 @@ public final class SettingsActivity extends BaseActivity {
         if (syncStore != null) {
             refreshSyncRows();
         }
+        refreshCacheUsage();
+    }
+
+    @Override
+    protected void onPause() {
+        handler.removeCallbacks(applyCacheLimit);
+        applyCacheLimit.run();
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        handler.removeCallbacks(applyCacheLimit);
+        super.onDestroy();
     }
 
     private void onServiceButton(String service) {
@@ -382,15 +424,15 @@ public final class SettingsActivity extends BaseActivity {
         bufferSeek = findViewById(R.id.buffer_seek);
         bufferValue = findViewById(R.id.buffer_value);
         int stored = Settings.bufferMinutes(this);
-        bufferSeek.setMax(Settings.BUFFER_MAX_MINUTES - Settings.BUFFER_MIN_MINUTES);
-        bufferSeek.setProgress(stored - Settings.BUFFER_MIN_MINUTES, false);
-        bufferValue.setText(getString(R.string.settings_buffer_value, stored));
+        bufferSeek.setMax(Settings.BUFFER_MAX_MINUTES);
+        bufferSeek.setProgress(progressForMinutes(stored), false);
+        bufferValue.setText(bufferLabel(stored));
 
         bufferSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int minutes = Settings.BUFFER_MIN_MINUTES + progress;
-                bufferValue.setText(getString(R.string.settings_buffer_value, minutes));
+                int minutes = minutesForProgress(progress);
+                bufferValue.setText(bufferLabel(minutes));
                 if (fromUser) {
                     Settings.setBufferMinutes(SettingsActivity.this, minutes);
                 }
@@ -403,9 +445,100 @@ public final class SettingsActivity extends BaseActivity {
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
                 Settings.setBufferMinutes(SettingsActivity.this,
-                        Settings.BUFFER_MIN_MINUTES + seekBar.getProgress());
+                        minutesForProgress(seekBar.getProgress()));
             }
         });
+    }
+
+    private String bufferLabel(int minutes) {
+        return minutes == Settings.BUFFER_UNLIMITED
+                ? getString(R.string.settings_buffer_unlimited)
+                : getString(R.string.settings_buffer_value, minutes);
+    }
+
+    private static int minutesForProgress(int progress) {
+        return progress >= Settings.BUFFER_MAX_MINUTES
+                ? Settings.BUFFER_UNLIMITED
+                : progress + Settings.BUFFER_MIN_MINUTES;
+    }
+
+    private static int progressForMinutes(int minutes) {
+        return minutes == Settings.BUFFER_UNLIMITED
+                ? Settings.BUFFER_MAX_MINUTES
+                : Math.max(0, Math.min(Settings.BUFFER_MAX_MINUTES - 1,
+                minutes - Settings.BUFFER_MIN_MINUTES));
+    }
+
+    private void setUpCache() {
+        cacheSeek = findViewById(R.id.cache_seek);
+        cacheValue = findViewById(R.id.cache_value);
+        cacheUsage = findViewById(R.id.cache_usage);
+        cacheSeek.setMax(CACHE_STEPS);
+        cacheSeek.setProgress(progressForBytes(Settings.cacheMaxBytes(this)), false);
+        cacheValue.setText(Formatter.formatShortFileSize(this, Settings.cacheMaxBytes(this)));
+        pendingCacheLimit = Settings.cacheMaxBytes(this);
+
+        cacheSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                long bytes = bytesForProgress(progress);
+                cacheValue.setText(Formatter.formatShortFileSize(SettingsActivity.this, bytes));
+                if (!fromUser) {
+                    return;
+                }
+                pendingCacheLimit = bytes;
+                Settings.setCacheMaxBytes(SettingsActivity.this, bytes);
+                handler.removeCallbacks(applyCacheLimit);
+                handler.postDelayed(applyCacheLimit, 250L);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                pendingCacheLimit = bytesForProgress(seekBar.getProgress());
+                Settings.setCacheMaxBytes(SettingsActivity.this, pendingCacheLimit);
+                handler.removeCallbacks(applyCacheLimit);
+                applyCacheLimit.run();
+            }
+        });
+
+        findViewById(R.id.view_cache_button).setOnClickListener(v ->
+                startActivity(new Intent(this, CacheActivity.class)));
+    }
+
+    private void refreshCacheUsage() {
+        if (cacheUsage == null) {
+            return;
+        }
+        App.get().async(
+                () -> App.get().cacheUsage(),
+                bytes -> {
+                    if (isFinishing() || isDestroyed() || cacheUsage == null) {
+                        return;
+                    }
+                    cacheUsage.setText(getString(R.string.settings_cache_usage,
+                            Formatter.formatShortFileSize(this, bytes),
+                            Formatter.formatShortFileSize(this, Settings.cacheMaxBytes(this))));
+                },
+                error -> {
+                }
+        );
+    }
+
+    private static long bytesForProgress(int progress) {
+        long span = Settings.CACHE_MAX_BYTES - Settings.CACHE_MIN_BYTES;
+        int clamped = Math.max(0, Math.min(CACHE_STEPS, progress));
+        return Settings.CACHE_MIN_BYTES + span * clamped / CACHE_STEPS;
+    }
+
+    private static int progressForBytes(long bytes) {
+        long span = Settings.CACHE_MAX_BYTES - Settings.CACHE_MIN_BYTES;
+        long clamped = Math.max(Settings.CACHE_MIN_BYTES,
+                Math.min(Settings.CACHE_MAX_BYTES, bytes));
+        return (int) ((clamped - Settings.CACHE_MIN_BYTES) * CACHE_STEPS / span);
     }
 
     private void setUpDownloadNext() {

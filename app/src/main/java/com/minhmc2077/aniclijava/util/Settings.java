@@ -14,15 +14,21 @@ public final class Settings {
     private static final String KEY_THEME = "theme";
     private static final String KEY_SKIP_BUTTON = "skip_button";
     private static final String KEY_BUFFER_MINUTES = "buffer_minutes";
+    private static final String KEY_CACHE_MAX_BYTES = "cache_max_bytes";
     private static final String KEY_UPDATE_CHECK = "update_check";
 
     public static final int SKIP_OFF = 0;
     public static final int SKIP_ON_TIME = 1;
     public static final int SKIP_EARLY = 2;
 
+    public static final int BUFFER_UNLIMITED = 0;
     public static final int BUFFER_MIN_MINUTES = 1;
     public static final int BUFFER_MAX_MINUTES = 10;
     private static final int BUFFER_DEFAULT_MINUTES = 2;
+
+    public static final long CACHE_MIN_BYTES = 100L * 1024L * 1024L;
+    public static final long CACHE_MAX_BYTES = 10L * 1024L * 1024L * 1024L;
+    private static final long CACHE_DEFAULT_BYTES = 2L * 1024L * 1024L * 1024L;
 
     public static final String ACCENT_BLUE = "blue";
     public static final String ACCENT_INDIGO = "indigo";
@@ -92,12 +98,22 @@ public final class Settings {
 
     public static int bufferMinutes(Context context) {
         int minutes = prefs(context).getInt(KEY_BUFFER_MINUTES, BUFFER_DEFAULT_MINUTES);
-        return Math.max(BUFFER_MIN_MINUTES, Math.min(BUFFER_MAX_MINUTES, minutes));
+        return Math.max(BUFFER_UNLIMITED, Math.min(BUFFER_MAX_MINUTES, minutes));
     }
 
     public static void setBufferMinutes(Context context, int minutes) {
-        int clamped = Math.max(BUFFER_MIN_MINUTES, Math.min(BUFFER_MAX_MINUTES, minutes));
+        int clamped = Math.max(BUFFER_UNLIMITED, Math.min(BUFFER_MAX_MINUTES, minutes));
         prefs(context).edit().putInt(KEY_BUFFER_MINUTES, clamped).apply();
+    }
+
+    public static long cacheMaxBytes(Context context) {
+        long bytes = prefs(context).getLong(KEY_CACHE_MAX_BYTES, CACHE_DEFAULT_BYTES);
+        return Math.max(CACHE_MIN_BYTES, Math.min(CACHE_MAX_BYTES, bytes));
+    }
+
+    public static void setCacheMaxBytes(Context context, long bytes) {
+        long clamped = Math.max(CACHE_MIN_BYTES, Math.min(CACHE_MAX_BYTES, bytes));
+        prefs(context).edit().putLong(KEY_CACHE_MAX_BYTES, clamped).apply();
     }
 
     public static boolean updateCheckEnabled(Context context) {

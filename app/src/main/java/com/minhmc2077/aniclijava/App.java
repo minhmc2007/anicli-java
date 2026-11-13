@@ -5,6 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.minhmc2077.aniclijava.cache.AdjustableLruCacheEvictor;
 import com.minhmc2077.aniclijava.data.AiringStore;
 import com.minhmc2077.aniclijava.data.AniRepository;
 import com.minhmc2077.aniclijava.data.AniSkipApi;
@@ -13,6 +14,7 @@ import com.minhmc2077.aniclijava.data.HistoryStore;
 import com.minhmc2077.aniclijava.data.OfflineStore;
 import com.minhmc2077.aniclijava.data.SyncStore;
 import com.minhmc2077.aniclijava.download.AniDownloadService;
+import com.minhmc2077.aniclijava.download.PrefixedDownloaderFactory;
 import com.minhmc2077.aniclijava.net.CronetHttp;
 import com.minhmc2077.aniclijava.net.ImageLoader;
 import com.minhmc2077.aniclijava.sync.AniListApi;
@@ -25,9 +27,9 @@ import org.chromium.net.CronetEngine;
 
 import androidx.media3.database.DatabaseProvider;
 import androidx.media3.database.StandaloneDatabaseProvider;
-import androidx.media3.datasource.cache.NoOpCacheEvictor;
 import androidx.media3.datasource.cache.SimpleCache;
 import androidx.media3.datasource.cronet.CronetDataSource;
+import androidx.media3.exoplayer.offline.DefaultDownloadIndex;
 import androidx.media3.exoplayer.offline.DownloadManager;
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper;
 
@@ -59,6 +61,7 @@ public final class App extends Application {
     private SyncStore syncStore;
     private SyncManager sync;
     private DatabaseProvider databaseProvider;
+    private AdjustableLruCacheEvictor cacheEvictor;
     private SimpleCache mediaCache;
     private CronetDataSource.Factory downloadDataSourceFactory;
     private DownloadManager downloadManager;
@@ -105,17 +108,20 @@ public final class App extends Application {
         syncStore = new SyncStore(this);
         sync = new SyncManager(this, syncStore, new MalApi(http), new AniListApi(http));
 
-        File media = new File(getFilesDir(), "media");
+        File media = new File(getCacheDir(), "media");
         if (!media.exists()) {
             //noinspection ResultOfMethodCallIgnored
             media.mkdirs();
         }
         databaseProvider = new StandaloneDatabaseProvider(this);
-        mediaCache = new SimpleCache(media, new NoOpCacheEvictor(), databaseProvider);
+        cacheEvictor = new AdjustableLruCacheEvictor(Settings.cacheMaxBytes(this));
+        mediaCache = new SimpleCache(media, cacheEvictor, databaseProvider);
         downloadDataSourceFactory = new CronetDataSource.Factory(cronetEngine, cronetCallbacks);
         setDownloadReferer(null);
         downloadManager = new DownloadManager(
-                this, databaseProvider, mediaCache, downloadDataSourceFactory, io);
+                this,
+                new DefaultDownloadIndex(databaseProvider),
+                new PrefixedDownloaderFactory(mediaCache, downloadDataSourceFactory, io));
         downloadNotifications = new DownloadNotificationHelper(
                 this, AniDownloadService.CHANNEL_ID);
 
@@ -152,6 +158,14 @@ public final class App extends Application {
 
     public SimpleCache mediaCache() {
         return mediaCache;
+    }
+
+    public long cacheUsage() {
+        return mediaCache.getCacheSpace();
+    }
+
+    public void setCacheLimitBytes(long bytes) {
+        cacheEvictor.setMaxBytes(mediaCache, bytes);
     }
 
     public DownloadManager downloadManager() {

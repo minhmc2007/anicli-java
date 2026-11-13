@@ -122,8 +122,14 @@
     <string name="settings_skip_on_time">On time</string>
     <string name="settings_skip_off">Off</string>
     <string name="settings_buffer">Buffer ahead</string>
-    <string name="settings_buffer_hint">How much of the episode ExoPlayer loads before it stops fetching more.</string>
+    <string name="settings_buffer_hint">How far ahead ExoPlayer loads. At the maximum, the whole episode is kept in cache as it plays.</string>
     <string name="settings_buffer_value">%1$d min</string>
+    <string name="settings_buffer_unlimited">Whole episode</string>
+    <string name="settings_section_cache">Cache</string>
+    <string name="settings_cache_hint">Streamed and downloaded episodes share this cache. When it reaches the limit, the oldest data is removed first.</string>
+    <string name="settings_cache_usage">%1$s of %2$s used</string>
+    <string name="settings_cache_limit">Cache limit</string>
+    <string name="settings_cache_view">View cached data</string>
     <string name="settings_download_next">Download next episode</string>
     <string name="settings_download_next_hint">Uses the most recent history entry. Downloads run in the background and keep the last four episodes.</string>
     <string name="settings_download_no_history">Nothing in history to download from yet.</string>
@@ -201,6 +207,16 @@
     <string name="update_install_title">Allow app installs</string>
     <string name="update_install_message">Android needs permission to install the downloaded update. Enable it for AniCli Java, then return to the app.</string>
     <string name="update_open_settings">Open settings</string>
+
+    <string name="cache_title">Cached data</string>
+    <string name="cache_limit">Limit %1$s</string>
+    <string name="cache_empty">Nothing cached yet.</string>
+    <string name="cache_other">Other</string>
+    <string name="cache_video">Video</string>
+    <string name="cache_mode_mixed">SUB + DUB</string>
+    <string name="cache_group_meta">%1$s • %2$s</string>
+    <string name="cache_episode_list">Episodes %1$s</string>
+    <string name="cache_episode_list_more">Episodes %1$s +%2$d</string>
 
     <string name="powered_by">Trending data from hianime.at</string>
 </resources>

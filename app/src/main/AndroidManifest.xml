@@ -65,6 +65,10 @@
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.AniCliJava.Player" />
 
+        <activity
+            android:name=".cache.CacheActivity"
+            android:exported="false" />
+
         <service
             android:name=".download.AniDownloadService"
             android:exported="false"

@@ -26,6 +26,7 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.datasource.cache.CacheDataSink;
 import androidx.media3.datasource.cache.CacheDataSource;
 import androidx.media3.datasource.cronet.CronetDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
@@ -39,6 +40,7 @@ import androidx.media3.ui.PlayerView;
 import com.google.android.material.button.MaterialButton;
 import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
+import com.minhmc2077.aniclijava.cache.ContentCacheKeyFactory;
 import com.minhmc2077.aniclijava.download.EpisodeDownloads;
 import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.model.Episode;
@@ -68,6 +70,7 @@ public final class PlayerActivity extends BaseActivity {
     private static final long LEVEL_HINT_MS = 800L;
     private static final long SKIP_POLL_MS = 500L;
     private static final float BRIGHTNESS_MIN = 0.01f;
+    private static final int MAX_BUFFER_BYTES = 64 * 1024 * 1024;
     private static final int SWIPE_NONE = 0;
     private static final int SWIPE_BRIGHTNESS = 1;
     private static final int SWIPE_VOLUME = 2;
@@ -84,7 +87,6 @@ public final class PlayerActivity extends BaseActivity {
     private PlayerView playerView;
     private ExoPlayer player;
     private CronetDataSource.Factory dataSourceFactory;
-    private CacheDataSource.Factory cacheDataSourceFactory;
 
     private View topBar;
     private TextView titleView;
@@ -169,6 +171,8 @@ public final class PlayerActivity extends BaseActivity {
     private boolean skipPolling;
     private int generation;
     private boolean destroyed;
+    private boolean playingOffline;
+    private boolean retriedOnline;
 
     public static void start(Context context, Anime anime, Episode episode, String mode) {
         Intent intent = new Intent(context, PlayerActivity.class);
@@ -277,16 +281,18 @@ public final class PlayerActivity extends BaseActivity {
         headers.put("User-Agent", CronetHttp.USER_AGENT);
         dataSourceFactory.setDefaultRequestProperties(headers);
 
-        cacheDataSourceFactory = new CacheDataSource.Factory()
-                .setCache(App.get().mediaCache())
-                .setUpstreamDataSourceFactory(dataSourceFactory)
-                .setCacheWriteDataSinkFactory(null);
-
-        int bufferMs = com.minhmc2077.aniclijava.util.Settings.bufferMinutes(this) * 60_000;
+        int bufferMinutes = com.minhmc2077.aniclijava.util.Settings.bufferMinutes(this);
+        int bufferMs = bufferMinutes == com.minhmc2077.aniclijava.util.Settings.BUFFER_UNLIMITED
+                ? Integer.MAX_VALUE
+                : bufferMinutes * 60_000;
+        int minBufferMs = bufferMinutes == com.minhmc2077.aniclijava.util.Settings.BUFFER_UNLIMITED
+                ? DefaultLoadControl.DEFAULT_MIN_BUFFER_MS
+                : bufferMs * 3 / 4;
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(bufferMs * 3 / 4, bufferMs,
+                .setBufferDurationsMs(minBufferMs, bufferMs,
                         DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
                         DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
+                .setTargetBufferBytes(MAX_BUFFER_BYTES)
                 .build();
         player = new ExoPlayer.Builder(this)
                 .setLoadControl(loadControl)
@@ -311,6 +317,11 @@ public final class PlayerActivity extends BaseActivity {
 
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
+                if (playingOffline && !retriedOnline) {
+                    retriedOnline = true;
+                    resolveCurrent();
+                    return;
+                }
                 showError(App.get().friendlyError(error));
             }
         });
@@ -356,44 +367,66 @@ public final class PlayerActivity extends BaseActivity {
         final int request = ++generation;
         final String requestedMode = mode;
         final Episode requestedEpisode = episode;
+        final boolean preferOffline = !retriedOnline;
         showLoading();
 
         App.get().async(
-                () -> App.get().repository().resolveStream(requestedEpisode.id, requestedMode),
-                info -> {
+                () -> resolveStream(requestedEpisode, requestedMode, preferOffline),
+                resolved -> {
                     if (destroyed || request != generation) {
                         return;
                     }
-                    stream = info;
-                    int malId = parseMalId(info.malId);
-                    if (malId > 0) {
-                        App.get().syncStore().putMalId(animeId, malId);
-                    }
-                    selectedQuality = pickQuality(info);
-                    updateQualityButton();
-                    attachSource(info, selectedQuality);
+                    watching(resolved);
                 },
                 error -> {
                     if (destroyed || request != generation) {
                         return;
                     }
-                    StreamInfo cached = App.get().offline().stream(
-                            animeId, requestedEpisode.number, requestedMode);
-                    if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
-                        stream = cached;
-                        int malId = parseMalId(cached.malId);
-                        if (malId > 0) {
-                            App.get().syncStore().putMalId(animeId, malId);
+                    if (!retriedOnline) {
+                        StreamInfo cached = App.get().offline().stream(
+                                animeId, requestedEpisode.number, requestedMode);
+                        if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
+                            playingOffline = true;
+                            applyStream(cached);
+                            Ui.toast(this, getString(R.string.player_playing_offline));
+                            return;
                         }
-                        selectedQuality = pickQuality(cached);
-                        updateQualityButton();
-                        Ui.toast(this, getString(R.string.player_playing_offline));
-                        attachSource(cached, selectedQuality);
-                        return;
                     }
                     showError(App.get().friendlyError(error));
                 }
         );
+    }
+
+    private ResolvedStream resolveStream(Episode target, String targetMode, boolean preferOffline)
+            throws Exception {
+        Download download = EpisodeDownloads.download(animeId, target.number, targetMode);
+        if (preferOffline && download != null && download.state == Download.STATE_COMPLETED) {
+            StreamInfo cached = App.get().offline().stream(animeId, target.number, targetMode);
+            if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
+                return new ResolvedStream(cached, true);
+            }
+        }
+        StreamInfo info = App.get().repository().resolveStream(target.id, targetMode);
+        if (download == null) {
+            App.get().offline().putStream(animeId, target.number, targetMode, info);
+        }
+        return new ResolvedStream(info, false);
+    }
+
+    private void watching(ResolvedStream resolved) {
+        stream = resolved.info;
+        playingOffline = resolved.offline;
+        applyStream(resolved.info);
+    }
+
+    private void applyStream(StreamInfo info) {
+        int malId = parseMalId(info.malId);
+        if (malId > 0) {
+            App.get().syncStore().putMalId(animeId, malId);
+        }
+        selectedQuality = pickQuality(info);
+        updateQualityButton();
+        attachSource(info, selectedQuality);
     }
 
     private Quality pickQuality(StreamInfo info) {
@@ -595,13 +628,27 @@ public final class PlayerActivity extends BaseActivity {
             item.setSubtitleConfigurations(Collections.singletonList(subtitle));
         }
 
-        return new DefaultMediaSourceFactory(cacheDataSourceFactory).createMediaSource(item.build());
+        return new DefaultMediaSourceFactory(cacheSource()).createMediaSource(item.build());
+    }
+
+    private CacheDataSource.Factory cacheSource() {
+        String contentId = EpisodeDownloads.id(animeId, episode.number, mode);
+        CacheDataSink.Factory sink = new CacheDataSink.Factory()
+                .setCache(App.get().mediaCache());
+        return new CacheDataSource.Factory()
+                .setCache(App.get().mediaCache())
+                .setUpstreamDataSourceFactory(dataSourceFactory)
+                .setCacheKeyFactory(new ContentCacheKeyFactory(contentId))
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                .setCacheWriteDataSinkFactory(sink);
     }
 
     private void toggleMode() {
         long position = player == null ? 0L : Math.max(0L, player.getCurrentPosition());
         pendingSeekMs = position;
         mode = "dub".equals(mode) ? "sub" : "dub";
+        playingOffline = false;
+        retriedOnline = false;
         updateModeButton();
         resolveCurrent();
     }
@@ -784,6 +831,8 @@ public final class PlayerActivity extends BaseActivity {
         savePosition();
         episode = next;
         pendingSeekMs = -1L;
+        playingOffline = false;
+        retriedOnline = false;
         updateEpisodeIndex();
         updateNavigation();
         updateTitle();
@@ -1065,5 +1114,15 @@ public final class PlayerActivity extends BaseActivity {
             playerView.setPlayer(null);
         }
         super.onDestroy();
+    }
+
+    private static final class ResolvedStream {
+        final StreamInfo info;
+        final boolean offline;
+
+        ResolvedStream(StreamInfo info, boolean offline) {
+            this.info = info;
+            this.offline = offline;
+        }
     }
 }
