@@ -86,6 +86,10 @@ public final class OfflineStore {
         }
     }
 
+    public synchronized void removeStream(String animeId, String episodeNumber, String mode) {
+        preferences.edit().remove(key(animeId, episodeNumber, mode)).apply();
+    }
+
     private void prune() {
         Map<String, ?> values = preferences.getAll();
         if (values.size() <= MAX_ENTRIES) {

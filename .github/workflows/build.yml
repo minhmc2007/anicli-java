@@ -13,25 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build debug APKs
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
-
-      - name: Build release APK
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
-
-      - name: Show signing key
-        run: ./gradlew :app:signingReport --no-daemon
 
       - name: Prepare debug APKs
         run: |
@@ -43,35 +37,35 @@ jobs:
           done
 
       - name: Upload universal debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: anicli-java-debug-universal
           path: dist/debug/anicli-java-debug-universal.apk
           if-no-files-found: error
 
       - name: Upload armeabi-v7a debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: anicli-java-debug-armeabi-v7a
           path: dist/debug/anicli-java-debug-armeabi-v7a.apk
           if-no-files-found: error
 
       - name: Upload arm64-v8a debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: anicli-java-debug-arm64-v8a
           path: dist/debug/anicli-java-debug-arm64-v8a.apk
           if-no-files-found: error
 
       - name: Upload x86 debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: anicli-java-debug-x86
           path: dist/debug/anicli-java-debug-x86.apk
           if-no-files-found: error
 
       - name: Upload x86_64 debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: anicli-java-debug-x86_64
           path: dist/debug/anicli-java-debug-x86_64.apk
