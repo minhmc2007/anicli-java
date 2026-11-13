@@ -1,27 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
     <LinearLayout
+        android:id="@+id/group_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingTop="10dp"
         android:paddingBottom="10dp">
 
-        <TextView
-            android:id="@+id/avatar"
+        <View
+            android:id="@+id/color"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            tools:background="#1976D2" />
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/poster"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:gravity="center"
-            android:textColor="@color/onPrimary"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            tools:text="O" />
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_poster_placeholder"
+            android:contentDescription="@string/content_description_poster"
+            android:scaleType="centerCrop"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.AniCli.Poster" />
 
         <LinearLayout
             android:layout_width="0dp"
@@ -56,11 +67,51 @@
             android:id="@+id/size"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_marginStart="10dp"
             android:gravity="end"
             android:textAppearance="?attr/textAppearanceTitleSmall"
             android:textColor="?attr/colorOnSurface"
             tools:text="350 MB" />
+
+        <ImageButton
+            android:id="@+id/expand"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="2dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/content_description_expand"
+            android:padding="4dp"
+            android:src="@drawable/ic_chevron_right"
+            app:tint="?attr/colorOnSurfaceVariant" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/group_expanded"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/episodes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/delete_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingStart="68dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="12dp"
+            android:text="@string/cache_delete_series"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textColor="?attr/colorError" />
     </LinearLayout>
 
     <View
