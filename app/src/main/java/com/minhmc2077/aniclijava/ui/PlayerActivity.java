@@ -26,8 +26,13 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.datasource.cache.CacheDataSink;
+import androidx.media3.datasource.cache.CacheDataSource;
 import androidx.media3.datasource.cronet.CronetDataSource;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.offline.Download;
+import androidx.media3.exoplayer.offline.DownloadManager;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.ui.PlayerView;
@@ -35,6 +40,8 @@ import androidx.media3.ui.PlayerView;
 import com.google.android.material.button.MaterialButton;
 import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
+import com.minhmc2077.aniclijava.cache.ContentCacheKeyFactory;
+import com.minhmc2077.aniclijava.download.EpisodeDownloads;
 import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.model.HistoryEntry;
@@ -63,6 +70,7 @@ public final class PlayerActivity extends BaseActivity {
     private static final long LEVEL_HINT_MS = 800L;
     private static final long SKIP_POLL_MS = 500L;
     private static final float BRIGHTNESS_MIN = 0.01f;
+    private static final int MAX_BUFFER_BYTES = 64 * 1024 * 1024;
     private static final int SWIPE_NONE = 0;
     private static final int SWIPE_BRIGHTNESS = 1;
     private static final int SWIPE_VOLUME = 2;
@@ -87,6 +95,26 @@ public final class PlayerActivity extends BaseActivity {
     private MaterialButton modeButton;
     private MaterialButton qualityButton;
     private MaterialButton skipButton;
+    private MaterialButton downloadButton;
+    private Download nextDownload;
+    private final DownloadManager.Listener downloadListener = new DownloadManager.Listener() {
+        @Override
+        public void onDownloadChanged(DownloadManager downloadManager, Download download,
+                                      @Nullable Exception finalException) {
+            if (isNextEpisode(download)) {
+                nextDownload = download;
+                updateDownloadButton();
+            }
+        }
+
+        @Override
+        public void onDownloadRemoved(DownloadManager downloadManager, Download download) {
+            if (isNextEpisode(download)) {
+                nextDownload = null;
+                updateDownloadButton();
+            }
+        }
+    };
     private View stateView;
     private ProgressBar stateProgress;
     private TextView stateText;
@@ -143,6 +171,9 @@ public final class PlayerActivity extends BaseActivity {
     private boolean skipPolling;
     private int generation;
     private boolean destroyed;
+    private boolean playingOffline;
+    private boolean retriedOnline;
+    private String autoDownloadKey;
 
     public static void start(Context context, Anime anime, Episode episode, String mode) {
         Intent intent = new Intent(context, PlayerActivity.class);
@@ -181,6 +212,7 @@ public final class PlayerActivity extends BaseActivity {
         modeButton = findViewById(R.id.mode_button);
         qualityButton = findViewById(R.id.quality_button);
         skipButton = findViewById(R.id.skip_button);
+        downloadButton = findViewById(R.id.download_button);
         skipButtonMode = com.minhmc2077.aniclijava.util.Settings.skipButtonMode(this);
         playerView = findViewById(R.id.player_view);
         stateView = findViewById(R.id.state);
@@ -230,6 +262,7 @@ public final class PlayerActivity extends BaseActivity {
         modeButton.setOnClickListener(v -> toggleMode());
         qualityButton.setOnClickListener(v -> showQualityMenu());
         skipButton.setOnClickListener(v -> skipCurrent());
+        downloadButton.setOnClickListener(v -> downloadNextEpisode(true));
         retryButton.setOnClickListener(v -> resolveCurrent());
 
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
@@ -249,7 +282,22 @@ public final class PlayerActivity extends BaseActivity {
         headers.put("User-Agent", CronetHttp.USER_AGENT);
         dataSourceFactory.setDefaultRequestProperties(headers);
 
-        player = new ExoPlayer.Builder(this).build();
+        int bufferMinutes = com.minhmc2077.aniclijava.util.Settings.bufferMinutes(this);
+        int bufferMs = bufferMinutes == com.minhmc2077.aniclijava.util.Settings.BUFFER_UNLIMITED
+                ? Integer.MAX_VALUE
+                : bufferMinutes * 60_000;
+        int minBufferMs = bufferMinutes == com.minhmc2077.aniclijava.util.Settings.BUFFER_UNLIMITED
+                ? DefaultLoadControl.DEFAULT_MIN_BUFFER_MS
+                : bufferMs * 3 / 4;
+        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(minBufferMs, bufferMs,
+                        DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
+                        DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
+                .setTargetBufferBytes(MAX_BUFFER_BYTES)
+                .build();
+        player = new ExoPlayer.Builder(this)
+                .setLoadControl(loadControl)
+                .build();
         playerView.setPlayer(player);
         player.addListener(new Player.Listener() {
             @Override
@@ -261,6 +309,7 @@ public final class PlayerActivity extends BaseActivity {
                     }
                     resumePositionMs = -1L;
                     loadSkipTimes();
+                    maybeAutoDownloadNext();
                 } else if (playbackState == Player.STATE_ENDED) {
                     stopSkipPolling();
                     hideSkipButton();
@@ -270,6 +319,11 @@ public final class PlayerActivity extends BaseActivity {
 
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
+                if (playingOffline && !retriedOnline) {
+                    retriedOnline = true;
+                    resolveCurrent();
+                    return;
+                }
                 showError(App.get().friendlyError(error));
             }
         });
@@ -294,10 +348,13 @@ public final class PlayerActivity extends BaseActivity {
                     episodes.addAll(list);
                     updateEpisodeIndex();
                     updateNavigation();
+                    refreshNextDownload();
+                    maybeAutoDownloadNext();
                 },
                 error -> {
                     if (!destroyed) {
                         updateNavigation();
+                        refreshNextDownload();
                     }
                 }
         );
@@ -313,30 +370,66 @@ public final class PlayerActivity extends BaseActivity {
         final int request = ++generation;
         final String requestedMode = mode;
         final Episode requestedEpisode = episode;
+        final boolean preferOffline = !retriedOnline;
         showLoading();
 
         App.get().async(
-                () -> App.get().repository().resolveStream(requestedEpisode.id, requestedMode),
-                info -> {
+                () -> resolveStream(requestedEpisode, requestedMode, preferOffline),
+                resolved -> {
                     if (destroyed || request != generation) {
                         return;
                     }
-                    stream = info;
-                    int malId = parseMalId(info.malId);
-                    if (malId > 0) {
-                        App.get().syncStore().putMalId(animeId, malId);
-                    }
-                    selectedQuality = pickQuality(info);
-                    updateQualityButton();
-                    attachSource(info, selectedQuality);
+                    watching(resolved);
                 },
                 error -> {
                     if (destroyed || request != generation) {
                         return;
                     }
+                    if (!retriedOnline) {
+                        StreamInfo cached = App.get().offline().stream(
+                                animeId, requestedEpisode.number, requestedMode);
+                        if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
+                            playingOffline = true;
+                            applyStream(cached);
+                            Ui.toast(this, getString(R.string.player_playing_offline));
+                            return;
+                        }
+                    }
                     showError(App.get().friendlyError(error));
                 }
         );
+    }
+
+    private ResolvedStream resolveStream(Episode target, String targetMode, boolean preferOffline)
+            throws Exception {
+        Download download = EpisodeDownloads.download(animeId, target.number, targetMode);
+        if (preferOffline && download != null && download.state == Download.STATE_COMPLETED) {
+            StreamInfo cached = App.get().offline().stream(animeId, target.number, targetMode);
+            if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
+                return new ResolvedStream(cached, true);
+            }
+        }
+        StreamInfo info = App.get().repository().resolveStream(target.id, targetMode);
+        if (download == null) {
+            App.get().offline().putStream(animeId, target.number, targetMode, info);
+        }
+        return new ResolvedStream(info, false);
+    }
+
+    private void watching(ResolvedStream resolved) {
+        stream = resolved.info;
+        playingOffline = resolved.offline;
+        applyStream(resolved.info);
+    }
+
+    private void applyStream(StreamInfo info) {
+        int malId = parseMalId(info.malId);
+        if (malId > 0) {
+            App.get().syncStore().putMalId(animeId, malId);
+        }
+        selectedQuality = pickQuality(info);
+        updateQualityButton();
+        attachSource(info, selectedQuality);
     }
 
     private Quality pickQuality(StreamInfo info) {
@@ -388,6 +481,7 @@ public final class PlayerActivity extends BaseActivity {
             lastSyncedEpisodeId = episode.id;
             App.get().sync().pushEpisode(animeId, animeTitle, episode.number, false);
         }
+        refreshNextDownload();
     }
 
     private void loadSkipTimes() {
@@ -537,13 +631,27 @@ public final class PlayerActivity extends BaseActivity {
             item.setSubtitleConfigurations(Collections.singletonList(subtitle));
         }
 
-        return new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(item.build());
+        return new DefaultMediaSourceFactory(cacheSource()).createMediaSource(item.build());
+    }
+
+    private CacheDataSource.Factory cacheSource() {
+        String contentId = EpisodeDownloads.id(animeId, episode.number, mode);
+        CacheDataSink.Factory sink = new CacheDataSink.Factory()
+                .setCache(App.get().mediaCache());
+        return new CacheDataSource.Factory()
+                .setCache(App.get().mediaCache())
+                .setUpstreamDataSourceFactory(dataSourceFactory)
+                .setCacheKeyFactory(new ContentCacheKeyFactory(contentId))
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                .setCacheWriteDataSinkFactory(sink);
     }
 
     private void toggleMode() {
         long position = player == null ? 0L : Math.max(0L, player.getCurrentPosition());
         pendingSeekMs = position;
         mode = "dub".equals(mode) ? "sub" : "dub";
+        playingOffline = false;
+        retriedOnline = false;
         updateModeButton();
         resolveCurrent();
     }
@@ -576,6 +684,185 @@ public final class PlayerActivity extends BaseActivity {
         menu.show();
     }
 
+    private Episode nextEpisode() {
+        if (episodeIndex >= 0 && episodeIndex + 1 < episodes.size()) {
+            return episodes.get(episodeIndex + 1);
+        }
+        return null;
+    }
+
+    private boolean isNextEpisode(Download download) {
+        Episode next = nextEpisode();
+        return download != null && next != null
+                && EpisodeDownloads.id(animeId, next.number, mode).equals(download.request.id);
+    }
+
+    private void refreshNextDownload() {
+        Episode next = nextEpisode();
+        nextDownload = null;
+        updateDownloadButton();
+        if (next == null) {
+            return;
+        }
+        final String expected = EpisodeDownloads.id(animeId, next.number, mode);
+        App.get().async(
+                () -> EpisodeDownloads.download(animeId, next.number, mode),
+                download -> {
+                    if (destroyed) {
+                        return;
+                    }
+                    Episode current = nextEpisode();
+                    if (current == null || !expected.equals(
+                            EpisodeDownloads.id(animeId, current.number, mode))) {
+                        return;
+                    }
+                    nextDownload = download;
+                    updateDownloadButton();
+                },
+                error -> {
+                }
+        );
+    }
+
+    private void maybeAutoDownloadNext() {
+        if (episode == null
+                || !com.minhmc2077.aniclijava.util.Settings.autoDownloadNext(this)) {
+            return;
+        }
+        if (nextEpisode() == null) {
+            return;
+        }
+        String key = EpisodeDownloads.id(animeId, episode.number, mode);
+        if (key.equals(autoDownloadKey)) {
+            return;
+        }
+        autoDownloadKey = key;
+        downloadNextEpisode(false);
+    }
+
+    private void downloadNextEpisode(boolean announce) {
+        final Episode current = episode;
+        if (current == null) {
+            return;
+        }
+        Episode next = nextEpisode();
+        if (next == null) {
+            if (announce) {
+                Ui.toast(this, getString(R.string.player_download_no_next));
+            }
+            return;
+        }
+        if (nextDownload != null) {
+            if (nextDownload.state == Download.STATE_COMPLETED) {
+                if (announce) {
+                    Ui.toast(this, getString(R.string.player_download_done, next.number));
+                }
+                return;
+            }
+            if (nextDownload.state == Download.STATE_QUEUED
+                    || nextDownload.state == Download.STATE_DOWNLOADING) {
+                if (announce) {
+                    Ui.toast(this, getString(R.string.player_download_queued, next.number));
+                }
+                return;
+            }
+        }
+        downloadButton.setEnabled(false);
+        if (announce) {
+            Ui.toast(this, getString(R.string.player_download_preparing));
+        }
+        App.get().async(
+                () -> EpisodeDownloads.resolveNext(animeId, current.number, current.id, mode),
+                target -> {
+                    if (destroyed) {
+                        return;
+                    }
+                    if (target == null) {
+                        refreshNextDownload();
+                        if (announce) {
+                            Ui.toast(this, getString(R.string.player_download_no_next));
+                        }
+                        return;
+                    }
+                    EpisodeDownloads.enqueue(this, animeId, target.episode, mode, target.info,
+                            new EpisodeDownloads.Callback() {
+                                @Override
+                                public void onQueued() {
+                                    if (destroyed) {
+                                        return;
+                                    }
+                                    refreshNextDownload();
+                                    if (announce) {
+                                        Ui.toast(PlayerActivity.this,
+                                                getString(R.string.player_download_queued,
+                                                        target.episode.number));
+                                    }
+                                }
+
+                                @Override
+                                public void onError(Exception error) {
+                                    if (destroyed) {
+                                        return;
+                                    }
+                                    refreshNextDownload();
+                                    if (announce) {
+                                        Ui.toast(PlayerActivity.this,
+                                                getString(R.string.player_download_failed));
+                                    }
+                                }
+                            });
+                },
+                error -> {
+                    if (destroyed) {
+                        return;
+                    }
+                    refreshNextDownload();
+                    if (announce) {
+                        Ui.toast(this, getString(R.string.player_download_failed));
+                    }
+                }
+        );
+    }
+
+    private void updateDownloadButton() {
+        if (downloadButton == null) {
+            return;
+        }
+        Episode next = nextEpisode();
+        if (next == null) {
+            downloadButton.setEnabled(false);
+            downloadButton.setAlpha(0.4f);
+            downloadButton.setContentDescription(getString(R.string.player_download_no_next));
+            return;
+        }
+        if (nextDownload == null) {
+            downloadButton.setEnabled(true);
+            downloadButton.setAlpha(1f);
+            downloadButton.setContentDescription(getString(R.string.player_download_next));
+            return;
+        }
+        if (nextDownload.state == Download.STATE_COMPLETED) {
+            downloadButton.setEnabled(false);
+            downloadButton.setAlpha(0.5f);
+            downloadButton.setContentDescription(
+                    getString(R.string.player_download_done, next.number));
+            return;
+        }
+        if (nextDownload.state == Download.STATE_QUEUED
+                || nextDownload.state == Download.STATE_DOWNLOADING) {
+            float progress = nextDownload.getPercentDownloaded();
+            int percent = progress < 0 ? 0 : Math.min(100, Math.round(progress));
+            downloadButton.setEnabled(false);
+            downloadButton.setAlpha(0.6f);
+            downloadButton.setContentDescription(
+                    getString(R.string.player_download_progress, next.number, percent));
+            return;
+        }
+        downloadButton.setEnabled(true);
+        downloadButton.setAlpha(1f);
+        downloadButton.setContentDescription(getString(R.string.player_download_next));
+    }
+
     private void playEpisode(Episode next) {
         if (next == null) {
             return;
@@ -583,6 +870,8 @@ public final class PlayerActivity extends BaseActivity {
         savePosition();
         episode = next;
         pendingSeekMs = -1L;
+        playingOffline = false;
+        retriedOnline = false;
         updateEpisodeIndex();
         updateNavigation();
         updateTitle();
@@ -821,6 +1110,8 @@ public final class PlayerActivity extends BaseActivity {
     @Override
     protected void onStart() {
         super.onStart();
+        App.get().downloadManager().addListener(downloadListener);
+        refreshNextDownload();
         handler.removeCallbacks(saveProgress);
         handler.postDelayed(saveProgress, SAVE_INTERVAL_MS);
         if (!skipTimes.isEmpty() && skipButtonMode != com.minhmc2077.aniclijava.util.Settings.SKIP_OFF) {
@@ -840,6 +1131,7 @@ public final class PlayerActivity extends BaseActivity {
         stopSkipPolling();
         hideSkipButton();
         savePosition();
+        App.get().downloadManager().removeListener(downloadListener);
         if (player != null) {
             player.pause();
         }
@@ -861,5 +1153,15 @@ public final class PlayerActivity extends BaseActivity {
             playerView.setPlayer(null);
         }
         super.onDestroy();
+    }
+
+    private static final class ResolvedStream {
+        final StreamInfo info;
+        final boolean offline;
+
+        ResolvedStream(StreamInfo info, boolean offline) {
+            this.info = info;
+            this.offline = offline;
+        }
     }
 }

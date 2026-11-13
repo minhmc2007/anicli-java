@@ -74,6 +74,16 @@
     <string name="player_finished">Finished</string>
     <string name="player_skip_op">Skip intro</string>
     <string name="player_skip_ed">Skip outro</string>
+    <string name="player_download_next">Download next episode</string>
+    <string name="player_download_preparing">Preparing download…</string>
+    <string name="player_download_queued">Downloading episode %1$s in the background.</string>
+    <string name="player_download_done">Episode %1$s is available offline.</string>
+    <string name="player_download_no_next">There is no next episode to download.</string>
+    <string name="player_download_progress">Downloading episode %1$s (%2$d%%)</string>
+    <string name="player_download_failed">Could not start the download.</string>
+    <string name="player_playing_offline">Playing from saved data. Missing parts need a connection.</string>
+    <string name="download_channel_name">Episode downloads</string>
+    <string name="download_channel_description">Background video downloads for offline playback</string>
 
     <string name="history_episode">Episode %1$s</string>
     <string name="history_watched">%1$s • %2$s</string>
@@ -111,6 +121,17 @@
     <string name="settings_skip_early">2s before</string>
     <string name="settings_skip_on_time">On time</string>
     <string name="settings_skip_off">Off</string>
+    <string name="settings_buffer">Buffer ahead</string>
+    <string name="settings_buffer_hint">How far ahead ExoPlayer loads. At the maximum, the whole episode is kept in cache as it plays.</string>
+    <string name="settings_buffer_value">%1$d min</string>
+    <string name="settings_buffer_unlimited">Whole episode</string>
+    <string name="settings_section_cache">Cache</string>
+    <string name="settings_cache_hint">Streamed and downloaded episodes share this cache. When it reaches the limit, the oldest data is removed first.</string>
+    <string name="settings_cache_usage">%1$s of %2$s used</string>
+    <string name="settings_cache_limit">Cache limit</string>
+    <string name="settings_cache_view">View cached data</string>
+    <string name="settings_download_next">Download next episode</string>
+    <string name="settings_download_next_hint">While an episode plays, the next one is downloaded in the background. The four newest downloads are kept.</string>
 
     <string name="settings_section_online">Online services</string>
     <string name="settings_online_hint">Sync watch progress with MyAnimeList and AniList. Long-press a service to change its client ID.</string>
@@ -182,6 +203,16 @@
     <string name="update_install_title">Allow app installs</string>
     <string name="update_install_message">Android needs permission to install the downloaded update. Enable it for AniCli Java, then return to the app.</string>
     <string name="update_open_settings">Open settings</string>
+
+    <string name="cache_title">Cached data</string>
+    <string name="cache_limit">Limit %1$s</string>
+    <string name="cache_empty">Nothing cached yet.</string>
+    <string name="cache_other">Other</string>
+    <string name="cache_video">Video</string>
+    <string name="cache_mode_mixed">SUB + DUB</string>
+    <string name="cache_group_meta">%1$s • %2$s</string>
+    <string name="cache_episode_list">Episodes %1$s</string>
+    <string name="cache_episode_list_more">Episodes %1$s +%2$d</string>
 
     <string name="powered_by">Trending data from hianime.at</string>
 </resources>
