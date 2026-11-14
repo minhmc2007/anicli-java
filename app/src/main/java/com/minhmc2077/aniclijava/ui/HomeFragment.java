@@ -19,6 +19,7 @@ import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.ui.adapter.AnimeAdapter;
+import com.minhmc2077.aniclijava.util.Settings;
 
 import java.util.List;
 
@@ -46,7 +47,10 @@ public final class HomeFragment extends Fragment implements Refreshable {
         super.onViewCreated(view, savedInstanceState);
 
         ((TextView) view.findViewById(R.id.header_title)).setText(R.string.home_title);
-        ((TextView) view.findViewById(R.id.header_subtitle)).setText(R.string.home_subtitle);
+        boolean mkissa = Settings.SOURCE_MKISSA.equals(Settings.animeSource(requireContext()));
+        ((TextView) view.findViewById(R.id.header_subtitle)).setText(mkissa
+                ? R.string.home_subtitle_mkissa
+                : R.string.home_subtitle);
 
         swipe = view.findViewById(R.id.swipe);
         recycler = view.findViewById(R.id.recycler);

@@ -10,6 +10,7 @@
 
     <string name="home_title">Trending now</string>
     <string name="home_subtitle">Most watched anime on HiAnime right now</string>
+    <string name="home_subtitle_mkissa">Popular anime on Mkissa right now</string>
     <string name="favourites_title">Favourites</string>
     <string name="favourites_subtitle">Anime you saved for later</string>
     <string name="history_title">History</string>
