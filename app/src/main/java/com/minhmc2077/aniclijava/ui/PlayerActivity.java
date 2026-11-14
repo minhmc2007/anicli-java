@@ -366,7 +366,7 @@ public final class PlayerActivity extends BaseActivity {
 
     private void loadEpisodes() {
         App.get().async(
-                () -> App.get().animeSource(animeId).episodes(animeId),
+                () -> App.get().animeSource(animeId).episodes(animeId, false),
                 list -> {
                     if (destroyed) {
                         return;

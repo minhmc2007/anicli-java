@@ -163,7 +163,7 @@ public final class AnimeDetailActivity extends BaseActivity {
 
     private void loadDetail() {
         App.get().async(
-                () -> App.get().animeSource(animeId).detail(animeId),
+                () -> App.get().animeSource(animeId).detail(animeId, false),
                 detail -> {
                     if (!destroyed && adapter != null) {
                         this.detail = detail;
@@ -188,7 +188,7 @@ public final class AnimeDetailActivity extends BaseActivity {
         adapter.setLoadingEpisodes(true, null);
 
         App.get().async(
-                () -> App.get().animeSource(animeId).episodes(animeId),
+                () -> App.get().animeSource(animeId).episodes(animeId, false),
                 list -> {
                     episodesLoading = false;
                     episodesLoaded = true;

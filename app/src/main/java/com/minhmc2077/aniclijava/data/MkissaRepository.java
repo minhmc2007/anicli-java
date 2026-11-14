@@ -545,8 +545,9 @@ public final class MkissaRepository implements AnimeSource {
     private static void collectUrls(Object node, List<String> urls) {
         if (node instanceof JSONObject) {
             JSONObject object = (JSONObject) node;
-            for (String key : object.keySet()) {
-                collectUrls(object.opt(key), urls);
+            java.util.Iterator<String> keys = object.keys();
+            while (keys.hasNext()) {
+                collectUrls(object.opt(keys.next()), urls);
             }
         } else if (node instanceof JSONArray) {
             JSONArray array = (JSONArray) node;
