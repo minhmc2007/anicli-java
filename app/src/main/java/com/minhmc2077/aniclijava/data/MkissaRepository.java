@@ -340,7 +340,7 @@ public final class MkissaRepository implements AnimeSource {
                 "variables", variables,
                 "extensions", extensions);
 
-        return request(body, build, true);
+        return request(body, build);
     }
 
     private Boot boot() throws IOException {
@@ -423,7 +423,7 @@ public final class MkissaRepository implements AnimeSource {
         JSONObject body = json(
                 "query", query,
                 "variables", variables);
-        JSONObject root = request(body, null, false);
+        JSONObject root = request(body, null);
         String error = errorMessage(root);
         if (error != null) {
             throw new IOException(error);
@@ -435,8 +435,7 @@ public final class MkissaRepository implements AnimeSource {
         return data;
     }
 
-    private JSONObject request(JSONObject body, Integer build, boolean decrypt)
-            throws IOException {
+    private JSONObject request(JSONObject body, Integer build) throws IOException {
         Map<String, String> headers = headers();
         if (build != null) {
             headers.put("x-build-id", String.valueOf(build));
@@ -444,10 +443,10 @@ public final class MkissaRepository implements AnimeSource {
         CronetHttp.Response response = http.request("POST", API, headers,
                 body.toString(), "application/json");
         if (!response.isSuccessful()) {
-            throw new IOException("Mkissa HTTP " + response.statusCode);
+            throw new IOException("Mkissa HTTP " + response.statusCode + ": "
+                    + snippet(response.text()));
         }
-        JSONObject root = parse(response);
-        return decrypt ? decrypt(root) : root;
+        return decrypt(parse(response));
     }
 
     private JSONObject decrypt(JSONObject root) throws IOException {
@@ -485,8 +484,14 @@ public final class MkissaRepository implements AnimeSource {
         try {
             return new JSONObject(response.text());
         } catch (JSONException error) {
-            throw new IOException("Could not parse Mkissa response", error);
+            throw new IOException("Could not parse Mkissa response: "
+                    + snippet(response.text()), error);
         }
+    }
+
+    private static String snippet(String value) {
+        String clean = HtmlText.clean(value);
+        return clean.length() > 160 ? clean.substring(0, 160) : clean;
     }
 
     private static String errorMessage(JSONObject root) {

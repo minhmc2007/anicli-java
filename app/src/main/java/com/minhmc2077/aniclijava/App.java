@@ -262,6 +262,9 @@ public final class App extends Application {
         if (lower.contains("captcha")) {
             return getString(R.string.error_mkissa_captcha);
         }
+        if (lower.contains("mkissa")) {
+            return message;
+        }
         if (lower.contains("no zokoanime") || lower.contains("no sources")) {
             return getString(R.string.error_no_sources);
         }
