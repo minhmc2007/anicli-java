@@ -136,18 +136,18 @@ public final class MkissaRepository implements AnimeSource {
     }
 
     private List<Anime> queryShows(String query, int limit) throws IOException {
-        JSONObject search = new JSONObject();
-        search.put("allowAdult", true);
-        search.put("allowUnknown", false);
-        search.put("denyEcchi", false);
-        search.put("query", query);
+        JSONObject search = json(
+                "allowAdult", true,
+                "allowUnknown", false,
+                "denyEcchi", false,
+                "query", query);
 
-        JSONObject variables = new JSONObject();
-        variables.put("search", search);
-        variables.put("limit", limit);
-        variables.put("page", 1);
-        variables.put("translationType", "sub");
-        variables.put("countryOrigin", "ALL");
+        JSONObject variables = json(
+                "search", search,
+                "limit", limit,
+                "page", 1,
+                "translationType", "sub",
+                "countryOrigin", "ALL");
 
         JSONObject data = plain(Q_SEARCH, variables);
         JSONObject shows = data.optJSONObject("shows");
@@ -206,10 +206,10 @@ public final class MkissaRepository implements AnimeSource {
 
     private String signedEpisodeUrl(String showId, String episode, String translation)
             throws IOException {
-        JSONObject variables = new JSONObject();
-        variables.put("showId", showId);
-        variables.put("translationType", translation);
-        variables.put("episodeString", episode);
+        JSONObject variables = json(
+                "showId", showId,
+                "translationType", translation,
+                "episodeString", episode);
 
         JSONObject root = signedEpisode(variables);
         JSONObject data = root.optJSONObject("data");
@@ -223,11 +223,11 @@ public final class MkissaRepository implements AnimeSource {
 
     private JSONObject episodeInfo(String showId, String episode, String translation)
             throws IOException {
-        JSONObject variables = new JSONObject();
-        variables.put("showId", showId);
         double number = EpisodeNumbers.value(episode);
-        variables.put("episodeNumStart", number);
-        variables.put("episodeNumEnd", number);
+        JSONObject variables = json(
+                "showId", showId,
+                "episodeNumStart", number,
+                "episodeNumEnd", number);
 
         JSONObject data = plain(Q_EPISODE_INFOS, variables);
         JSONArray infos = data.optJSONArray("episodeInfos");
@@ -253,11 +253,11 @@ public final class MkissaRepository implements AnimeSource {
             return cached;
         }
 
-        JSONObject variables = new JSONObject();
-        variables.put("_id", showId);
-        variables.put("search", new JSONObject()
-                .put("allowAdult", true)
-                .put("allowUnknown", false));
+        JSONObject variables = json(
+                "_id", showId,
+                "search", json(
+                        "allowAdult", true,
+                        "allowUnknown", false));
 
         JSONObject data = plain(Q_SHOW, variables);
         JSONObject object = data.optJSONObject("show");
@@ -329,16 +329,16 @@ public final class MkissaRepository implements AnimeSource {
         String aaReq = aaReq(current, EPISODE_HASH, build,
                 (System.currentTimeMillis() / 300000L) * 300000L);
 
-        JSONObject extensions = new JSONObject();
-        extensions.put("persistedQuery", new JSONObject()
-                .put("version", 1)
-                .put("sha256Hash", EPISODE_HASH));
-        extensions.put("k", LANE);
-        extensions.put("aaReq", aaReq);
+        JSONObject extensions = json(
+                "persistedQuery", json(
+                        "version", 1,
+                        "sha256Hash", EPISODE_HASH),
+                "k", LANE,
+                "aaReq", aaReq);
 
-        JSONObject body = new JSONObject();
-        body.put("variables", variables);
-        body.put("extensions", extensions);
+        JSONObject body = json(
+                "variables", variables,
+                "extensions", extensions);
 
         return request(body, build, true);
     }
@@ -382,13 +382,13 @@ public final class MkissaRepository implements AnimeSource {
                 + ":" + LANE;
         byte[] iv = Arrays.copyOf(sha256(seed), 12);
 
-        JSONObject payload = new JSONObject();
-        payload.put("v", 1);
-        payload.put("ts", timestamp);
-        payload.put("epoch", value.epoch);
-        payload.put("buildId", build);
-        payload.put("qh", queryHash);
-        payload.put("k", LANE);
+        JSONObject payload = json(
+                "v", 1,
+                "ts", timestamp,
+                "epoch", value.epoch,
+                "buildId", build,
+                "qh", queryHash,
+                "k", LANE);
 
         byte[] encrypted;
         try {
@@ -420,9 +420,9 @@ public final class MkissaRepository implements AnimeSource {
     }
 
     private JSONObject plain(String query, JSONObject variables) throws IOException {
-        JSONObject body = new JSONObject();
-        body.put("query", query);
-        body.put("variables", variables);
+        JSONObject body = json(
+                "query", query,
+                "variables", variables);
         JSONObject root = request(body, null, false);
         String error = errorMessage(root);
         if (error != null) {
@@ -473,9 +473,7 @@ public final class MkissaRepository implements AnimeSource {
 
             JSONObject inner = new JSONObject(new String(plain, StandardCharsets.UTF_8));
             if (!inner.has("data")) {
-                JSONObject wrapped = new JSONObject();
-                wrapped.put("data", inner);
-                return wrapped;
+                return json("data", inner);
             }
             return inner;
         } catch (JSONException | GeneralSecurityException error) {
@@ -611,6 +609,18 @@ public final class MkissaRepository implements AnimeSource {
         } catch (NumberFormatException ignored) {
             return 0L;
         }
+    }
+
+    private static JSONObject json(Object... entries) throws IOException {
+        JSONObject object = new JSONObject();
+        try {
+            for (int i = 0; i + 1 < entries.length; i += 2) {
+                object.put((String) entries[i], entries[i + 1]);
+            }
+        } catch (JSONException error) {
+            throw new IOException("Mkissa request failed", error);
+        }
+        return object;
     }
 
     private static String first(String first, String second) {
