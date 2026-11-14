@@ -114,7 +114,8 @@ public final class CronetHttp {
 
             @Override
             public void onFailed(UrlRequest request, UrlResponseInfo info, CronetException error) {
-                failure[0] = new IOException("Cronet request failed: " + error.getMessage(), error);
+                failure[0] = new IOException("Cronet request failed (" + url + "): "
+                        + error.getMessage(), error);
                 latch.countDown();
             }
 
@@ -132,7 +133,7 @@ public final class CronetHttp {
         try {
             if (!latch.await(30, TimeUnit.SECONDS)) {
                 request.cancel();
-                throw new IOException("Request timed out");
+                throw new IOException("Request timed out (" + url + ")");
             }
         } catch (InterruptedException interrupted) {
             request.cancel();
@@ -214,7 +215,8 @@ public final class CronetHttp {
 
             @Override
             public void onFailed(UrlRequest request, UrlResponseInfo info, CronetException error) {
-                failure[0] = new IOException("Cronet request failed: " + error.getMessage(), error);
+                failure[0] = new IOException("Cronet request failed (" + url + "): "
+                        + error.getMessage(), error);
                 latch.countDown();
             }
 

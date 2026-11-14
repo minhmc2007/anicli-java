@@ -271,7 +271,8 @@ public final class App extends Application {
         if (lower.contains("http ")) {
             return message;
         }
-        return getString(R.string.error_network);
+        String detail = String.valueOf(error);
+        return detail.isEmpty() ? getString(R.string.error_network) : detail;
     }
 
     public void log(String message) {
