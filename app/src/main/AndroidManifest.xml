@@ -66,6 +66,10 @@
             android:theme="@style/Theme.AniCliJava.Player" />
 
         <activity
+            android:name=".ui.MkissaVerifyActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".cache.CacheActivity"
             android:exported="false" />
 

@@ -1,5 +1,6 @@
 package com.minhmc2077.aniclijava.data;
 
+import android.net.Uri;
 import android.util.Base64;
 
 import com.minhmc2077.aniclijava.model.Anime;
@@ -194,14 +195,45 @@ public final class MkissaRepository implements AnimeSource {
         Show show = show(showId, false);
         String translation = "dub".equalsIgnoreCase(mode) ? "dub" : "sub";
         String direct = signedEpisodeUrl(showId, episode.number, translation);
+        return stream(showId, show, episode, translation, direct);
+    }
 
-        JSONObject info = episodeInfo(showId, episode.number, translation);
-        int height = info == null ? 0 : parseHeight(info.opt("vidResolution"));
-        long durationMs = info == null ? 0L : optDurationMs(info, "vidDuration");
+    public StreamInfo streamFromUrl(String animeId, Episode episode, String mode, String url)
+            throws IOException {
+        String showId = showId(animeId);
+        Show show = show(showId, false);
+        String translation = "dub".equalsIgnoreCase(mode) ? "dub" : "sub";
+        return stream(showId, show, episode, translation, url);
+    }
 
-        Quality quality = new Quality(height > 0 ? height + "p" : "Auto", height, direct);
-        return new StreamInfo(direct, null, REFERER, show.malId,
+    public static String watchUrl(String animeId, String episode, String mode) {
+        return SITE + "/anime/" + showId(animeId) + "/p-" + episode + "-"
+                + ("dub".equalsIgnoreCase(mode) ? "dub" : "sub");
+    }
+
+    private StreamInfo stream(String showId, Show show, Episode episode, String translation,
+                              String url) throws IOException {
+        int height = 0;
+        long durationMs = 0L;
+        try {
+            JSONObject info = episodeInfo(showId, episode.number, translation);
+            height = info == null ? 0 : parseHeight(info.opt("vidResolution"));
+            durationMs = info == null ? 0L : optDurationMs(info, "vidDuration");
+        } catch (IOException ignored) {
+            // Metadata is optional once a playable URL is already in hand.
+        }
+
+        Quality quality = new Quality(height > 0 ? height + "p" : "Auto", height, url);
+        return new StreamInfo(url, null, refererFor(url), show.malId,
                 Collections.singletonList(quality), durationMs, MP4);
+    }
+
+    private static String refererFor(String url) {
+        String host = Uri.parse(url).getHost();
+        if (host != null && host.endsWith("mp4upload.com")) {
+            return "https://www.mp4upload.com/";
+        }
+        return REFERER;
     }
 
     private String signedEpisodeUrl(String showId, String episode, String translation)

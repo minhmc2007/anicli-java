@@ -152,6 +152,10 @@ public final class App extends Application {
         return repository;
     }
 
+    public MkissaRepository mkissa() {
+        return mkissa;
+    }
+
     public AnimeSource animeSource() {
         return Settings.SOURCE_MKISSA.equals(Settings.animeSource(this)) ? mkissa : repository;
     }

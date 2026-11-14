@@ -39,6 +39,10 @@
     <string name="error_cloudflare">HiAnime blocked the request. Please try again in a moment.</string>
     <string name="error_no_sources">No sources found for this episode.</string>
     <string name="error_mkissa_captcha">Mkissa is asking for a captcha. Try again or switch source.</string>
+    <string name="mkissa_verify_title">Mkissa verification</string>
+    <string name="mkissa_verify_subtitle">Complete the check to load this episode</string>
+    <string name="mkissa_verify_hint">If a checkbox appears, tap it once. Playback starts automatically when the video is ready.</string>
+    <string name="mkissa_verify_failed">Could not load Mkissa. Check your connection and try again.</string>
 
     <string name="detail_episodes">Episodes</string>
     <string name="detail_play">Play</string>
