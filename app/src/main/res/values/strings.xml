@@ -38,6 +38,7 @@
     <string name="error_network">Network error. Check your connection and try again.</string>
     <string name="error_cloudflare">HiAnime blocked the request. Please try again in a moment.</string>
     <string name="error_no_sources">No sources found for this episode.</string>
+    <string name="error_mkissa_captcha">Mkissa is asking for a captcha. Try again or switch source.</string>
 
     <string name="detail_episodes">Episodes</string>
     <string name="detail_play">Play</string>
@@ -130,6 +131,13 @@
     <string name="settings_buffer_hint">How far ahead ExoPlayer loads. At the maximum, the whole episode is kept in cache as it plays.</string>
     <string name="settings_buffer_value">%1$d min</string>
     <string name="settings_buffer_unlimited">Whole episode</string>
+    <string name="settings_section_sources">Sources</string>
+    <string name="settings_sources_hint">Choose where anime is loaded from.</string>
+    <string name="settings_source_anime">Anime</string>
+    <string name="settings_source_hianime">HiAnime</string>
+    <string name="settings_source_hianime_desc">Stable Eng Sub/Dub provider.</string>
+    <string name="settings_source_mkissa">Mkissa</string>
+    <string name="settings_source_mkissa_desc">Experimental Eng Sub/Dub provider; better translation quality in some cases.</string>
     <string name="settings_section_cache">Cache</string>
     <string name="settings_cache_hint">Streamed and downloaded episodes share this cache. When it reaches the limit, the oldest data is removed first.</string>
     <string name="settings_cache_usage">%1$s of %2$s used</string>
@@ -210,6 +218,9 @@
     <string name="update_open_settings">Open settings</string>
 
     <string name="cache_title">Cached data</string>
+    <string name="cache_source_label">Source</string>
+    <string name="cache_empty_source">Nothing cached from this source.</string>
+    <string name="cache_other_source">%1$s (other source): %2$s</string>
     <string name="cache_limit">Limit %1$s</string>
     <string name="cache_empty">Nothing cached yet.</string>
     <string name="cache_other">Other</string>

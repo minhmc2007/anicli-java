@@ -17,6 +17,7 @@ public final class Settings {
     private static final String KEY_CACHE_MAX_BYTES = "cache_max_bytes";
     private static final String KEY_AUTO_DOWNLOAD_NEXT = "auto_download_next";
     private static final String KEY_UPDATE_CHECK = "update_check";
+    private static final String KEY_ANIME_SOURCE = "anime_source";
 
     public static final int SKIP_OFF = 0;
     public static final int SKIP_ON_TIME = 1;
@@ -37,6 +38,10 @@ public final class Settings {
     public static final String ACCENT_GREEN = "green";
     public static final String ACCENT_RED = "red";
     public static final String ACCENT_ORANGE = "orange";
+
+    public static final String SOURCE_HIANIME = "hianime";
+    public static final String SOURCE_MKISSA = "mkissa";
+    public static final String MKISSA_ID_PREFIX = "mk:";
 
     public static final String[] ACCENT_KEYS = {
             ACCENT_BLUE, ACCENT_INDIGO, ACCENT_TEAL,
@@ -131,6 +136,22 @@ public final class Settings {
 
     public static void setUpdateCheckEnabled(Context context, boolean enabled) {
         prefs(context).edit().putBoolean(KEY_UPDATE_CHECK, enabled).apply();
+    }
+
+    public static String animeSource(Context context) {
+        String source = prefs(context).getString(KEY_ANIME_SOURCE, SOURCE_HIANIME);
+        return SOURCE_MKISSA.equals(source) ? SOURCE_MKISSA : SOURCE_HIANIME;
+    }
+
+    public static void setAnimeSource(Context context, String source) {
+        prefs(context).edit().putString(KEY_ANIME_SOURCE,
+                SOURCE_MKISSA.equals(source) ? SOURCE_MKISSA : SOURCE_HIANIME).apply();
+    }
+
+    public static String sourceOf(String animeId) {
+        return animeId != null && animeId.startsWith(MKISSA_ID_PREFIX)
+                ? SOURCE_MKISSA
+                : SOURCE_HIANIME;
     }
 
     public static void applyAccent(Activity activity) {

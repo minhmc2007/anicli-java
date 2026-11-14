@@ -125,7 +125,7 @@ public final class SearchFragment extends Fragment implements Refreshable {
         showLoading();
 
         App.get().async(
-                () -> App.get().repository().search(query),
+                () -> App.get().animeSource().search(query),
                 list -> {
                     loading = false;
                     if (adapter != null) {

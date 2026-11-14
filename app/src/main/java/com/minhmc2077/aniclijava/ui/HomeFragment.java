@@ -82,7 +82,7 @@ public final class HomeFragment extends Fragment implements Refreshable {
         }
 
         App.get().async(
-                () -> App.get().repository().trending(force),
+                () -> App.get().animeSource().trending(force),
                 list -> {
                     loading = false;
                     loaded = true;

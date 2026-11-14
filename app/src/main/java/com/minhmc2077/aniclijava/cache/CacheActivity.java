@@ -13,10 +13,12 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.minhmc2077.aniclijava.App;
 import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.ui.BaseActivity;
+import com.minhmc2077.aniclijava.util.Settings;
 import com.minhmc2077.aniclijava.util.Ui;
 
 import java.util.ArrayList;
@@ -25,13 +27,16 @@ import java.util.List;
 import java.util.Set;
 
 public final class CacheActivity extends BaseActivity {
+    private static final int OTHER_COLOR = 0xFF78909C;
     private final Set<String> expandedGroups = new HashSet<>();
 
     private TextView usage;
     private TextView limit;
+    private TextView other;
     private TextView empty;
     private UsageBarView bar;
     private LinearLayout groups;
+    private String cacheSource;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -46,10 +51,13 @@ public final class CacheActivity extends BaseActivity {
 
         usage = findViewById(R.id.cache_usage);
         limit = findViewById(R.id.cache_limit);
+        other = findViewById(R.id.cache_other);
         empty = findViewById(R.id.cache_empty);
         groups = findViewById(R.id.cache_groups);
         bar = findViewById(R.id.cache_bar);
         bar.setTrackColor(getColor(R.color.divider));
+        cacheSource = Settings.animeSource(this);
+        setUpSourceGroup();
     }
 
     @Override
@@ -60,7 +68,7 @@ public final class CacheActivity extends BaseActivity {
 
     private void refresh() {
         App.get().async(
-                () -> CacheReport.load(this),
+                () -> CacheReport.load(this, cacheSource),
                 report -> {
                     if (isFinishing() || isDestroyed()) {
                         return;
@@ -70,6 +78,27 @@ public final class CacheActivity extends BaseActivity {
                 error -> {
                 }
         );
+    }
+
+    private void setUpSourceGroup() {
+        MaterialButtonToggleGroup group = findViewById(R.id.cache_source_group);
+        group.check(Settings.SOURCE_MKISSA.equals(cacheSource)
+                ? R.id.cache_source_mkissa
+                : R.id.cache_source_hianime);
+        group.addOnButtonCheckedListener((buttonGroup, checkedId, isChecked) -> {
+            if (!isChecked) {
+                return;
+            }
+            String source = checkedId == R.id.cache_source_mkissa
+                    ? Settings.SOURCE_MKISSA
+                    : Settings.SOURCE_HIANIME;
+            if (source.equals(cacheSource)) {
+                return;
+            }
+            cacheSource = source;
+            expandedGroups.clear();
+            refresh();
+        });
     }
 
     private void render(CacheReport report) {
@@ -83,9 +112,20 @@ public final class CacheActivity extends BaseActivity {
         for (CacheReport.Group group : report.groups) {
             segments.add(new UsageBarView.Segment(group.bytes, group.color));
         }
+        if (report.otherBytes > 0L) {
+            segments.add(new UsageBarView.Segment(report.otherBytes, OTHER_COLOR));
+        }
         bar.setSegments(report.usage, report.limit, segments);
 
+        String otherName = getString(Settings.SOURCE_MKISSA.equals(cacheSource)
+                ? R.string.settings_source_hianime
+                : R.string.settings_source_mkissa);
+        other.setText(getString(R.string.cache_other_source, otherName,
+                Formatter.formatShortFileSize(this, report.otherBytes)));
+        other.setVisibility(report.otherBytes > 0L ? View.VISIBLE : View.GONE);
+
         groups.removeAllViews();
+        empty.setText(R.string.cache_empty_source);
         empty.setVisibility(report.groups.isEmpty() ? View.VISIBLE : View.GONE);
         if (report.groups.isEmpty()) {
             expandedGroups.clear();

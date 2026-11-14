@@ -40,7 +40,7 @@ import java.util.regex.Pattern;
  * the same endpoints and the same ZokoAnime embed deobfuscation as the shell
  * script, but uses Java regex/JSON instead of sed/awk.
  */
-public final class AniRepository {
+public final class AniRepository implements AnimeSource {
     public static final String BASE = "https://hianime.at";
     private static final String HOME = BASE + "/home";
     private static final String SEARCH = BASE + "/search?keyword=%s";
@@ -206,8 +206,7 @@ public final class AniRepository {
     }
 
     public StreamInfo resolveStream(String episodeId, String mode) throws IOException {
-        String requestedMode = "dub".equalsIgnoreCase(mode) ? "dub" : "sub";
-        String serversBody = fetch(String.format(Locale.US, SERVERS, episodeId));
+        String requestedMode = "dub".equalsIgnoreCase(mode) ? "dub" : "sub";        String serversBody = fetch(String.format(Locale.US, SERVERS, episodeId));
 
         String serversHtml;
         try {
@@ -285,6 +284,11 @@ public final class AniRepository {
 
         return new StreamInfo(masterUrl, subtitleUrl, referer, malId,
                 measured.qualities, measured.durationMs);
+    }
+
+    @Override
+    public StreamInfo resolveStream(String animeId, Episode episode, String mode) throws IOException {
+        return resolveStream(episode.id, mode);
     }
 
     private List<Anime> parseTrending(String html) {

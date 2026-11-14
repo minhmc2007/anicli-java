@@ -366,7 +366,7 @@ public final class PlayerActivity extends BaseActivity {
 
     private void loadEpisodes() {
         App.get().async(
-                () -> App.get().repository().episodes(animeId),
+                () -> App.get().animeSource(animeId).episodes(animeId),
                 list -> {
                     if (destroyed) {
                         return;
@@ -437,7 +437,8 @@ public final class PlayerActivity extends BaseActivity {
                 return new ResolvedStream(cached, true);
             }
         }
-        StreamInfo info = App.get().repository().resolveStream(target.id, targetMode);
+        StreamInfo info = App.get().animeSource(animeId)
+                .resolveStream(animeId, target, targetMode);
         if (download == null) {
             App.get().offline().putStream(animeId, target.number, targetMode, info);
         }
@@ -663,7 +664,9 @@ public final class PlayerActivity extends BaseActivity {
         // Play the exact variant so the player cannot drift onto a broken one.
         MediaItem.Builder item = new MediaItem.Builder()
                 .setUri(TextUtils.isEmpty(url) ? info.masterUrl : url)
-                .setMimeType(MimeTypes.APPLICATION_M3U8);
+                .setMimeType(TextUtils.isEmpty(info.mimeType)
+                        ? MimeTypes.APPLICATION_M3U8
+                        : info.mimeType);
         if (!TextUtils.isEmpty(info.subtitleUrl)) {
             MediaItem.SubtitleConfiguration subtitle =
                     new MediaItem.SubtitleConfiguration.Builder(Uri.parse(info.subtitleUrl))

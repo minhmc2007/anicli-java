@@ -9,8 +9,10 @@ import com.minhmc2077.aniclijava.cache.AdjustableLruCacheEvictor;
 import com.minhmc2077.aniclijava.data.AiringStore;
 import com.minhmc2077.aniclijava.data.AniRepository;
 import com.minhmc2077.aniclijava.data.AniSkipApi;
+import com.minhmc2077.aniclijava.data.AnimeSource;
 import com.minhmc2077.aniclijava.data.FavouriteStore;
 import com.minhmc2077.aniclijava.data.HistoryStore;
+import com.minhmc2077.aniclijava.data.MkissaRepository;
 import com.minhmc2077.aniclijava.data.OfflineStore;
 import com.minhmc2077.aniclijava.data.SyncStore;
 import com.minhmc2077.aniclijava.download.AniDownloadService;
@@ -52,6 +54,7 @@ public final class App extends Application {
     private Handler main;
     private CronetHttp http;
     private AniRepository repository;
+    private MkissaRepository mkissa;
     private AniSkipApi aniSkip;
     private OfflineStore offline;
     private ImageLoader imageLoader;
@@ -99,6 +102,7 @@ public final class App extends Application {
 
         http = new CronetHttp(cronetEngine, cronetCallbacks);
         repository = new AniRepository(http);
+        mkissa = new MkissaRepository(http);
         aniSkip = new AniSkipApi(http);
         offline = new OfflineStore(this);
         imageLoader = new ImageLoader(this, http, io);
@@ -146,6 +150,14 @@ public final class App extends Application {
 
     public AniRepository repository() {
         return repository;
+    }
+
+    public AnimeSource animeSource() {
+        return Settings.SOURCE_MKISSA.equals(Settings.animeSource(this)) ? mkissa : repository;
+    }
+
+    public AnimeSource animeSource(String animeId) {
+        return Settings.SOURCE_MKISSA.equals(Settings.sourceOf(animeId)) ? mkissa : repository;
     }
 
     public AniSkipApi aniSkip() {
@@ -246,6 +258,9 @@ public final class App extends Application {
         String lower = message.toLowerCase(Locale.US);
         if (lower.contains("cloudflare")) {
             return getString(R.string.error_cloudflare);
+        }
+        if (lower.contains("captcha")) {
+            return getString(R.string.error_mkissa_captcha);
         }
         if (lower.contains("no zokoanime") || lower.contains("no sources")) {
             return getString(R.string.error_no_sources);

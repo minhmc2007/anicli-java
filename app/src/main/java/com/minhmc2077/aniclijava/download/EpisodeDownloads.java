@@ -16,6 +16,7 @@ import androidx.media3.exoplayer.offline.DownloadRequest;
 import androidx.media3.exoplayer.offline.DownloadService;
 
 import com.minhmc2077.aniclijava.App;
+import com.minhmc2077.aniclijava.data.AnimeSource;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.model.StreamInfo;
 
@@ -48,7 +49,8 @@ public final class EpisodeDownloads {
 
     public static Target resolveNext(String animeId, String episodeNumber, String episodeId,
                                      String mode) throws IOException {
-        List<Episode> episodes = App.get().repository().episodes(animeId);
+        AnimeSource source = App.get().animeSource(animeId);
+        List<Episode> episodes = source.episodes(animeId, false);
         int index = -1;
         for (int i = 0; i < episodes.size(); i++) {
             Episode candidate = episodes.get(i);
@@ -62,7 +64,7 @@ public final class EpisodeDownloads {
             return null;
         }
         Episode next = episodes.get(index + 1);
-        StreamInfo info = App.get().repository().resolveStream(next.id, mode);
+        StreamInfo info = source.resolveStream(animeId, next, mode);
         return new Target(next, info);
     }
 
@@ -99,7 +101,9 @@ public final class EpisodeDownloads {
                 : info.qualities.get(0).url;
         MediaItem item = new MediaItem.Builder()
                 .setUri(Uri.parse(TextUtils.isEmpty(streamUrl) ? info.masterUrl : streamUrl))
-                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .setMimeType(TextUtils.isEmpty(info.mimeType)
+                        ? MimeTypes.APPLICATION_M3U8
+                        : info.mimeType)
                 .build();
         DownloadHelper helper = new DownloadHelper.Factory()
                 .setDataSourceFactory(App.get().downloadDataSourceFactory())

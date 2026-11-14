@@ -37,9 +37,42 @@
             android:paddingBottom="24dp">
 
             <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/cache_source_label"
+                android:textAppearance="?attr/textAppearanceTitleSmall"
+                android:textColor="?attr/colorOnSurface" />
+
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/cache_source_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:selectionRequired="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/cache_source_hianime"
+                    style="@style/Widget.AniCli.Button.Outlined"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/settings_source_hianime" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/cache_source_mkissa"
+                    style="@style/Widget.AniCli.Button.Outlined"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/settings_source_mkissa" />
+            </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <TextView
                 android:id="@+id/cache_usage"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
                 android:textAppearance="?attr/textAppearanceHeadlineSmall"
                 android:textColor="?attr/colorOnSurface" />
 
@@ -56,6 +89,15 @@
                 android:layout_marginTop="6dp"
                 android:textAppearance="?attr/textAppearanceBodySmall"
                 android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <TextView
+                android:id="@+id/cache_other"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:visibility="gone" />
 
             <TextView
                 android:layout_width="match_parent"

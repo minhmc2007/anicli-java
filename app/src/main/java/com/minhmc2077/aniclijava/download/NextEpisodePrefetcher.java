@@ -73,7 +73,7 @@ public final class NextEpisodePrefetcher {
     }
 
     private void prefetch() throws IOException {
-        if (minutes <= 0 || cancelled.get()) {
+        if (minutes <= 0 || cancelled.get() || !TextUtils.isEmpty(info.mimeType)) {
             return;
         }
         App.get().offline().putStream(animeId, episode.number, mode, info);
