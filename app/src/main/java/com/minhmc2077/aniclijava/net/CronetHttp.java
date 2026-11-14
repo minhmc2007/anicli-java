@@ -333,7 +333,8 @@ public final class CronetHttp {
             int count = Math.min(buffer.remaining(), data.length - offset);
             buffer.put(data, offset, count);
             offset += count;
-            sink.onReadSucceeded(offset >= data.length);
+            // Non-chunked uploads get their length from getLength().
+            sink.onReadSucceeded(false);
         }
 
         @Override
