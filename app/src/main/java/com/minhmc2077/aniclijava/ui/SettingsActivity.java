@@ -14,6 +14,7 @@ import android.view.Gravity;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -88,6 +89,7 @@ public final class SettingsActivity extends BaseActivity {
         setUpBuffer();
         setUpCache();
         setUpDownloadNext();
+        setUpSource();
 
         findViewById(R.id.github_button).setOnClickListener(v -> openRepository());
 
@@ -541,6 +543,17 @@ public final class SettingsActivity extends BaseActivity {
         downloadNextSwitch.setChecked(Settings.autoDownloadNext(this));
         downloadNextSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
                 Settings.setAutoDownloadNext(this, isChecked));
+    }
+
+    private void setUpSource() {
+        RadioGroup group = findViewById(R.id.source_group);
+        group.check(Settings.SOURCE_MKISSA.equals(Settings.animeSource(this))
+                ? R.id.source_mkissa
+                : R.id.source_hianime);
+        group.setOnCheckedChangeListener((radioGroup, checkedId) ->
+                Settings.setAnimeSource(this, checkedId == R.id.source_mkissa
+                        ? Settings.SOURCE_MKISSA
+                        : Settings.SOURCE_HIANIME));
     }
 
     private void openRepository() {

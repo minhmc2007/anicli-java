@@ -95,7 +95,7 @@ public final class AiringChecker {
                 }
                 List<Episode> episodes;
                 try {
-                    episodes = App.get().repository().episodes(anime.id, true);
+                    episodes = App.get().animeSource(anime.id).episodes(anime.id, true);
                 } catch (IOException error) {
                     // A single failing page must not stop the other checks.
                     continue;
@@ -143,7 +143,7 @@ public final class AiringChecker {
         long now = System.currentTimeMillis();
         long checked = airing.airingCheckedAt(anime.id);
         if (checked <= 0L || now < checked || now - checked >= STATUS_TTL_MS) {
-            AnimeDetail detail = App.get().repository().detail(anime.id, true);
+            AnimeDetail detail = App.get().animeSource(anime.id).detail(anime.id, true);
             airing.setAiring(anime.id, AiringStatus.isAiring(detail.status));
         }
         return airing.isAiring(anime.id);

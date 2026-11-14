@@ -70,16 +70,23 @@ public final class CacheReport {
 
     public final long usage;
     public final long limit;
+    public final long otherBytes;
     public final List<Group> groups;
 
-    private CacheReport(long usage, long limit, List<Group> groups) {
+    private CacheReport(long usage, long limit, long otherBytes, List<Group> groups) {
         this.usage = usage;
         this.limit = limit;
+        this.otherBytes = otherBytes;
         this.groups = groups;
     }
 
     public static CacheReport load(Context context) {
+        return load(context, Settings.animeSource(context));
+    }
+
+    public static CacheReport load(Context context, String source) {
         SimpleCache cache = App.get().mediaCache();
+        boolean mkissa = Settings.SOURCE_MKISSA.equals(source);
         Map<String, HistoryEntry> history = new HashMap<>();
         for (HistoryEntry entry : App.get().history().getAll()) {
             if (!history.containsKey(entry.animeId)) {
@@ -92,6 +99,7 @@ public final class CacheReport {
         }
 
         Map<String, GroupBuilder> builders = new LinkedHashMap<>();
+        long otherBytes = 0L;
         for (String key : cache.getKeys()) {
             long bytes = 0L;
             for (CacheSpan span : cache.getCachedSpans(key)) {
@@ -107,6 +115,11 @@ public final class CacheReport {
             if (contentId != null) {
                 int separator = contentId.indexOf('|');
                 animeId = separator > 0 ? contentId.substring(0, separator) : contentId;
+            }
+            boolean itemMkissa = Settings.SOURCE_MKISSA.equals(Settings.sourceOf(animeId));
+            if (itemMkissa != mkissa) {
+                otherBytes += bytes;
+                continue;
             }
             GroupBuilder builder = builders.get(animeId);
             if (builder == null) {
@@ -171,7 +184,8 @@ public final class CacheReport {
         }
         Collections.sort(groups, (first, second) -> Long.compare(second.bytes, first.bytes));
 
-        return new CacheReport(cache.getCacheSpace(), Settings.cacheMaxBytes(context), groups);
+        return new CacheReport(cache.getCacheSpace(), Settings.cacheMaxBytes(context),
+                otherBytes, groups);
     }
 
     /** Removes the cached bytes and download record for a single episode. */

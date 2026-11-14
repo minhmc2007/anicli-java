@@ -36,6 +36,7 @@ public final class MainActivity extends BaseActivity {
     private MaterialToolbar toolbar;
     private BottomNavigationView bottomNavigation;
     private int currentTab = R.id.nav_home;
+    private String activeSource;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,6 +54,7 @@ public final class MainActivity extends BaseActivity {
         bottomNavigation = findViewById(R.id.bottom_nav);
         Ui.applyTopInset(toolbar);
         Ui.applyBottomInset(bottomNavigation);
+        activeSource = Settings.animeSource(this);
 
         int startTab = savedInstanceState == null
                 ? R.id.nav_home
@@ -166,6 +168,12 @@ public final class MainActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        String source = Settings.animeSource(this);
+        if (!source.equals(activeSource)) {
+            activeSource = source;
+            recreate();
+            return;
+        }
         refreshCurrentTab();
     }
 

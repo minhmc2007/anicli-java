@@ -20,6 +20,8 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
@@ -61,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class PlayerActivity extends BaseActivity {
@@ -183,6 +186,26 @@ public final class PlayerActivity extends BaseActivity {
     private boolean recoveredShortStream;
     private String autoDownloadKey;
     private NextEpisodePrefetcher prefetcher;
+    private volatile String verifiedKey;
+    private volatile String verifiedUrl;
+    private boolean verifying;
+    private final ActivityResultLauncher<Intent> verifyLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                verifying = false;
+                if (destroyed) {
+                    return;
+                }
+                Intent data = result.getData();
+                String url = result.getResultCode() == RESULT_OK && data != null
+                        ? data.getStringExtra(MkissaVerifyActivity.EXTRA_MEDIA_URL)
+                        : null;
+                if (TextUtils.isEmpty(url)) {
+                    showError(getString(R.string.error_mkissa_captcha));
+                    return;
+                }
+                verifiedUrl = url;
+                resolveCurrent();
+            });
 
     public static void start(Context context, Anime anime, Episode episode, String mode) {
         Intent intent = new Intent(context, PlayerActivity.class);
@@ -351,6 +374,11 @@ public final class PlayerActivity extends BaseActivity {
                     return;
                 }
                 rememberPosition();
+                if (verifiedUrl != null && stream != null
+                        && verifiedUrl.equals(stream.masterUrl)) {
+                    verifiedUrl = null;
+                    verifiedKey = null;
+                }
                 showError(App.get().friendlyError(error));
             }
         });
@@ -366,7 +394,7 @@ public final class PlayerActivity extends BaseActivity {
 
     private void loadEpisodes() {
         App.get().async(
-                () -> App.get().repository().episodes(animeId),
+                () -> App.get().animeSource(animeId).episodes(animeId, false),
                 list -> {
                     if (destroyed) {
                         return;
@@ -422,6 +450,10 @@ public final class PlayerActivity extends BaseActivity {
                             return;
                         }
                     }
+                    if (isMkissaSource() && isCaptcha(error)) {
+                        requestVerification(requestedEpisode, requestedMode);
+                        return;
+                    }
                     showError(App.get().friendlyError(error));
                 }
         );
@@ -437,11 +469,46 @@ public final class PlayerActivity extends BaseActivity {
                 return new ResolvedStream(cached, true);
             }
         }
-        StreamInfo info = App.get().repository().resolveStream(target.id, targetMode);
+        if (verifiedUrl != null
+                && streamKey(target.number, targetMode).equals(verifiedKey)) {
+            StreamInfo info = App.get().mkissa().streamFromUrl(
+                    animeId, target, targetMode, verifiedUrl);
+            if (download == null) {
+                App.get().offline().putStream(animeId, target.number, targetMode, info);
+            }
+            return new ResolvedStream(info, false);
+        }
+        StreamInfo info = App.get().animeSource(animeId)
+                .resolveStream(animeId, target, targetMode);
         if (download == null) {
             App.get().offline().putStream(animeId, target.number, targetMode, info);
         }
         return new ResolvedStream(info, false);
+    }
+
+    private void requestVerification(Episode target, String targetMode) {
+        if (verifying || destroyed) {
+            return;
+        }
+        verifying = true;
+        verifiedKey = streamKey(target.number, targetMode);
+        verifiedUrl = null;
+        showLoading();
+        verifyLauncher.launch(MkissaVerifyActivity.intent(this, animeId, target.number, targetMode));
+    }
+
+    private boolean isMkissaSource() {
+        return com.minhmc2077.aniclijava.util.Settings.SOURCE_MKISSA
+                .equals(com.minhmc2077.aniclijava.util.Settings.sourceOf(animeId));
+    }
+
+    private static boolean isCaptcha(Throwable error) {
+        return error != null && String.valueOf(error.getMessage())
+                .toLowerCase(Locale.US).contains("captcha");
+    }
+
+    private String streamKey(String episodeNumber, String targetMode) {
+        return animeId + "|" + episodeNumber + "|" + targetMode;
     }
 
     private void watching(ResolvedStream resolved) {
@@ -663,7 +730,9 @@ public final class PlayerActivity extends BaseActivity {
         // Play the exact variant so the player cannot drift onto a broken one.
         MediaItem.Builder item = new MediaItem.Builder()
                 .setUri(TextUtils.isEmpty(url) ? info.masterUrl : url)
-                .setMimeType(MimeTypes.APPLICATION_M3U8);
+                .setMimeType(TextUtils.isEmpty(info.mimeType)
+                        ? MimeTypes.APPLICATION_M3U8
+                        : info.mimeType);
         if (!TextUtils.isEmpty(info.subtitleUrl)) {
             MediaItem.SubtitleConfiguration subtitle =
                     new MediaItem.SubtitleConfiguration.Builder(Uri.parse(info.subtitleUrl))

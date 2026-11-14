@@ -52,7 +52,8 @@ public final class OfflineStore {
                     object.optString("referer", ""),
                     object.optString("mal", ""),
                     qualities,
-                    object.optLong("durationMs", 0L));
+                    object.optLong("durationMs", 0L),
+                    object.optString("mime", null));
         } catch (Exception ignored) {
             return null;
         }
@@ -70,6 +71,7 @@ public final class OfflineStore {
             object.put("referer", info.referer == null ? "" : info.referer);
             object.put("mal", info.malId == null ? "" : info.malId);
             object.put("durationMs", info.durationMs);
+            object.put("mime", info.mimeType == null ? "" : info.mimeType);
             object.put("saved", System.currentTimeMillis());
             JSONArray qualities = new JSONArray();
             for (Quality quality : info.qualities) {

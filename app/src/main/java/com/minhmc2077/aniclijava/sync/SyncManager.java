@@ -319,7 +319,8 @@ public final class SyncManager {
     }
 
     private boolean applyRemote(Candidate candidate, RemoteEntry entry) throws IOException {
-        List<Episode> episodes = app.repository().episodes(candidate.animeId);
+        List<Episode> episodes = app.animeSource(candidate.animeId)
+                .episodes(candidate.animeId, false);
         Episode target = null;
         for (Episode episode : episodes) {
             if (Math.abs(EpisodeNumbers.value(episode.number) - entry.progress) < 0.0001d) {
