@@ -612,7 +612,7 @@ public final class MkissaRepository implements AnimeSource {
         return result;
     }
 
-    private static String showId(String animeId) {
+    public static String showId(String animeId) {
         if (animeId == null) {
             return "";
         }

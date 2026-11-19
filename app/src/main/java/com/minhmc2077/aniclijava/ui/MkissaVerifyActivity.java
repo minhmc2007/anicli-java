@@ -53,9 +53,16 @@ public final class MkissaVerifyActivity extends BaseActivity {
 
     private final AtomicBoolean embedStarted = new AtomicBoolean();
     private boolean finished;
+    private int routeRecoveries;
     private WebView webView;
     private ProgressBar progress;
     private String browserUserAgent;
+    private String watchPage;
+    private String expectedPath;
+    private String showId;
+    private String episode;
+    private String translation;
+    private volatile String pageUrl;
 
     public static Intent intent(Context context, String animeId, String episode, String mode) {
         Intent intent = new Intent(context, MkissaVerifyActivity.class);
@@ -72,12 +79,16 @@ public final class MkissaVerifyActivity extends BaseActivity {
         setContentView(R.layout.activity_mkissa_verify);
 
         String animeId = getIntent().getStringExtra("anime_id");
-        String episode = getIntent().getStringExtra("episode");
+        episode = getIntent().getStringExtra("episode");
         String mode = getIntent().getStringExtra("mode");
         if (animeId == null || episode == null) {
             finish();
             return;
         }
+        showId = MkissaRepository.showId(animeId);
+        translation = "dub".equalsIgnoreCase(mode) ? "dub" : "sub";
+        watchPage = MkissaRepository.watchUrl(animeId, episode, translation);
+        expectedPath = Uri.parse(watchPage).getPath();
 
         MaterialToolbar toolbar = findViewById(R.id.toolbar);
         progress = findViewById(R.id.progress);
@@ -89,7 +100,7 @@ public final class MkissaVerifyActivity extends BaseActivity {
 
         browserUserAgent = browserUserAgent(this);
         setUpWebView();
-        webView.loadUrl(MkissaRepository.watchUrl(animeId, episode, mode));
+        webView.loadUrl(watchPage);
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -129,12 +140,20 @@ public final class MkissaVerifyActivity extends BaseActivity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                pageUrl = url;
                 spoof(view);
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                pageUrl = url;
                 spoof(view);
+                recoverRoute(url);
+            }
+
+            @Override
+            public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+                pageUrl = url;
             }
 
             @Override
@@ -142,16 +161,16 @@ public final class MkissaVerifyActivity extends BaseActivity {
                                                               WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String url = uri == null ? "" : uri.toString();
+                if (!onWatchPage()) {
+                    return null;
+                }
                 if (isEmbed(url)) {
                     resolveEmbed(url);
                     return null;
                 }
                 if (isMedia(url)) {
                     deliver(url);
-                    String type = url.toLowerCase(Locale.US).contains(".m3u8")
-                            ? "application/vnd.apple.mpegurl"
-                            : "video/mp4";
-                    return new WebResourceResponse(type, "utf-8",
+                    return new WebResourceResponse("video/mp4", "utf-8",
                             new ByteArrayInputStream(new byte[0]));
                 }
                 return null;
@@ -175,6 +194,37 @@ public final class MkissaVerifyActivity extends BaseActivity {
                 view.evaluateJavascript(SPOOF_JS, null);
             }
         }, 700);
+    }
+
+    private void recoverRoute(String url) {
+        if (finished || routeRecoveries >= 2 || !isMkissaHost(Uri.parse(url))) {
+            return;
+        }
+        String path = Uri.parse(url).getPath();
+        if (path == null || !path.startsWith("/anime/") || path.startsWith(expectedPath)) {
+            return;
+        }
+        // A challenge redirect must not leave us on a different title.
+        routeRecoveries++;
+        webView.loadUrl(watchPage);
+    }
+
+    private boolean onWatchPage() {
+        String current = pageUrl;
+        if (current == null) {
+            return false;
+        }
+        Uri uri = Uri.parse(current);
+        if (!isMkissaHost(uri)) {
+            return false;
+        }
+        String path = uri.getPath();
+        return path != null && path.startsWith(expectedPath);
+    }
+
+    private static boolean isMkissaHost(Uri uri) {
+        String host = uri.getHost();
+        return host != null && (host.equals("mkissa.to") || host.endsWith(".mkissa.to"));
     }
 
     private void resolveEmbed(String url) {
@@ -210,26 +260,31 @@ public final class MkissaVerifyActivity extends BaseActivity {
         return url.contains("mp4upload.com/embed-");
     }
 
-    private static boolean isMedia(String url) {
+    private boolean isMedia(String url) {
         String lower = url.toLowerCase(Locale.US);
         if (!lower.startsWith("http")) {
             return false;
         }
-        String host = Uri.parse(lower).getHost();
-        if (host != null && (host.equals("mkissa.to") || host.endsWith(".mkissa.to"))) {
-            return false;
-        }
-        if (lower.contains("fast4speed") || lower.contains("youtube-anime")
-                || lower.contains("authorization=")) {
+        if (lower.contains("fast4speed") || lower.contains("authorization=")) {
             return true;
         }
+        if (lower.contains("youtube-anime")) {
+            String wantedShow = showId.toLowerCase(Locale.US);
+            String path = Uri.parse(lower).getPath();
+            return lower.contains(wantedShow) && path != null
+                    && path.endsWith("/" + episode.toLowerCase(Locale.US) + ".mp4");
+        }
+        String host = Uri.parse(lower).getHost();
+        if (host == null || !(host.equals("mp4upload.com") || host.endsWith(".mp4upload.com"))) {
+            return false;
+        }
         String path = Uri.parse(lower).getPath();
-        return path != null && (path.endsWith(".mp4") || path.endsWith(".m3u8"));
+        return path != null && path.endsWith("/video.mp4");
     }
 
     private void deliver(String url) {
         runOnUiThread(() -> {
-            if (finished || url == null || url.isEmpty()) {
+            if (finished || url == null || url.isEmpty() || !onWatchPage() || !isMedia(url)) {
                 return;
             }
             finished = true;
