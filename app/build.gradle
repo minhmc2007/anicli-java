@@ -28,9 +28,128 @@ def configString = { value ->
     '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 
+def githubToken = (System.getenv('GITHUB_TOKEN') ?: '').trim()
+
+def downloadFile = { String url, File target, boolean json ->
+    target.parentFile.mkdirs()
+    def connection = new URL(url).openConnection()
+    connection.setRequestProperty('User-Agent', 'anicli-java-build')
+    connection.setRequestProperty('Accept', json
+            ? 'application/vnd.github+json'
+            : 'application/octet-stream')
+    // Only the API needs the token; release assets reject foreign auth headers.
+    if (json && githubToken) {
+        connection.setRequestProperty('Authorization', "Bearer ${githubToken}")
+    }
+    connection.connectTimeout = 30000
+    connection.readTimeout = 600000
+    connection.inputStream.withStream { input ->
+        target.withOutputStream { output -> output << input }
+    }
+}
+
+def latestNcnnTag = { ->
+    def connection = new URL('https://api.github.com/repos/Tencent/ncnn/releases/latest')
+            .openConnection()
+    connection.setRequestProperty('User-Agent', 'anicli-java-build')
+    connection.setRequestProperty('Accept', 'application/vnd.github+json')
+    if (githubToken) {
+        connection.setRequestProperty('Authorization', "Bearer ${githubToken}")
+    }
+    connection.connectTimeout = 30000
+    connection.readTimeout = 60000
+    def release
+    connection.inputStream.withStream { input ->
+        release = new groovy.json.JsonSlurper().parse(input)
+    }
+    def tag = release.tag_name
+    if (!tag) {
+        throw new GradleException('Could not resolve the latest ncnn release')
+    }
+    return tag
+}
+
+def ncnnRoot = layout.buildDirectory.dir('ncnn/current').get().asFile
+def rifeAssets = layout.buildDirectory.dir('generated/rife-assets').get().asFile
+def rifeCommit = 'a7532fc3f9f8f008cd6eecd6f2ffe2a9698e0cf7'
+
+tasks.register('prepareNcnn') {
+    outputs.upToDateWhen { false }
+    doLast {
+        def tag = latestNcnnTag()
+        def marker = new File(ncnnRoot, '.version')
+        if (marker.isFile() && marker.text.trim() == tag
+                && new File(ncnnRoot, 'arm64-v8a/lib/libncnn.a').isFile()) {
+            return
+        }
+        delete ncnnRoot
+        def cacheDir = new File(layout.buildDirectory.get().asFile, 'ncnn')
+        def archive = new File(cacheDir, "ncnn-${tag}-android-vulkan.zip")
+        if (!archive.isFile() || archive.length() == 0) {
+            downloadFile("https://github.com/Tencent/ncnn/releases/download/${tag}/"
+                    + "ncnn-${tag}-android-vulkan.zip", archive, false)
+        }
+        def staging = new File(cacheDir, "staging-${tag}")
+        delete staging
+        copy {
+            from zipTree(archive)
+            into staging
+        }
+        def root = staging.listFiles()?.find { it.isDirectory() }
+        if (root == null) {
+            throw new GradleException('Unexpected ncnn archive layout')
+        }
+        copy {
+            from root
+            into ncnnRoot
+        }
+        new File(ncnnRoot, '.version').text = tag
+        delete staging
+    }
+}
+
+tasks.register('prepareRifeModel') {
+    outputs.upToDateWhen { false }
+    doLast {
+        def modelDir = new File(rifeAssets, 'rife-v4.6')
+        def models = [
+                'flownet.param': 16532L,
+                'flownet.bin'  : 10614320L,
+        ]
+        models.each { name, size ->
+            def target = new File(modelDir, name)
+            if (target.isFile() && target.length() == size) {
+                return
+            }
+            def temp = new File(modelDir, name + '.tmp')
+            downloadFile("https://raw.githubusercontent.com/nihui/rife-ncnn-vulkan/"
+                    + "${rifeCommit}/models/rife-v4.6/${name}", temp, false)
+            if (temp.length() != size) {
+                temp.delete()
+                throw new GradleException("Unexpected size for ${name}")
+            }
+            delete target
+            if (!temp.renameTo(target)) {
+                temp.delete()
+                throw new GradleException("Could not store ${name}")
+            }
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name.startsWith('configureCMake')) {
+        task.dependsOn('prepareNcnn')
+    }
+    if (task.name.startsWith('merge') && task.name.contains('Assets')) {
+        task.dependsOn('prepareRifeModel')
+    }
+}
+
 android {
     namespace 'com.minhmc2077.aniclijava'
     compileSdk 37
+    ndkVersion '28.2.13676358'
 
     // Fixed debug key so consecutive CI builds are signed identically.
     signingConfigs {
@@ -60,6 +179,13 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DNCNN_DIR=${ncnnRoot.absolutePath}"
+                cppFlags '-std=c++17'
+            }
+        }
     }
 
     buildTypes {
@@ -81,6 +207,19 @@ android {
             reset()
             include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
             universalApk true
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    sourceSets {
+        main {
+            assets.srcDir(rifeAssets)
         }
     }
 

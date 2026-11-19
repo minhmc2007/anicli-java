@@ -18,6 +18,10 @@ public final class Settings {
     private static final String KEY_AUTO_DOWNLOAD_NEXT = "auto_download_next";
     private static final String KEY_UPDATE_CHECK = "update_check";
     private static final String KEY_ANIME_SOURCE = "anime_source";
+    private static final String KEY_FRAME_GEN = "frame_gen";
+    private static final String KEY_FRAME_GEN_FPS = "frame_gen_fps";
+    private static final String KEY_FRAME_GEN_QUALITY = "frame_gen_quality";
+    private static final String KEY_FRAME_GEN_SKIP_OP_ED = "frame_gen_skip_op_ed";
 
     public static final int SKIP_OFF = 0;
     public static final int SKIP_ON_TIME = 1;
@@ -42,6 +46,10 @@ public final class Settings {
     public static final String SOURCE_HIANIME = "hianime";
     public static final String SOURCE_MKISSA = "mkissa";
     public static final String MKISSA_ID_PREFIX = "mk:";
+
+    public static final int[] FRAME_GEN_FPS = {30, 60, 90, 120};
+    public static final int FRAME_GEN_MAX_QUALITY = 2;
+    private static final int FRAME_GEN_DEFAULT_FPS = 60;
 
     public static final String[] ACCENT_KEYS = {
             ACCENT_BLUE, ACCENT_INDIGO, ACCENT_TEAL,
@@ -152,6 +160,46 @@ public final class Settings {
         return animeId != null && animeId.startsWith(MKISSA_ID_PREFIX)
                 ? SOURCE_MKISSA
                 : SOURCE_HIANIME;
+    }
+
+    public static boolean frameGenEnabled(Context context) {
+        return prefs(context).getBoolean(KEY_FRAME_GEN, false);
+    }
+
+    public static void setFrameGenEnabled(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(KEY_FRAME_GEN, enabled).apply();
+    }
+
+    public static int frameGenTargetFps(Context context) {
+        int stored = prefs(context).getInt(KEY_FRAME_GEN_FPS, FRAME_GEN_DEFAULT_FPS);
+        for (int fps : FRAME_GEN_FPS) {
+            if (fps == stored) {
+                return fps;
+            }
+        }
+        return FRAME_GEN_DEFAULT_FPS;
+    }
+
+    public static void setFrameGenTargetFps(Context context, int fps) {
+        prefs(context).edit().putInt(KEY_FRAME_GEN_FPS, fps).apply();
+    }
+
+    public static int frameGenQuality(Context context) {
+        int stored = prefs(context).getInt(KEY_FRAME_GEN_QUALITY, 0);
+        return Math.max(0, Math.min(FRAME_GEN_MAX_QUALITY, stored));
+    }
+
+    public static void setFrameGenQuality(Context context, int quality) {
+        int clamped = Math.max(0, Math.min(FRAME_GEN_MAX_QUALITY, quality));
+        prefs(context).edit().putInt(KEY_FRAME_GEN_QUALITY, clamped).apply();
+    }
+
+    public static boolean skipFrameGenOpEd(Context context) {
+        return prefs(context).getBoolean(KEY_FRAME_GEN_SKIP_OP_ED, true);
+    }
+
+    public static void setSkipFrameGenOpEd(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(KEY_FRAME_GEN_SKIP_OP_ED, enabled).apply();
     }
 
     public static void applyAccent(Activity activity) {

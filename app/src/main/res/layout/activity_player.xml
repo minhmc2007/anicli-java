@@ -7,6 +7,19 @@
     android:layout_height="match_parent"
     android:background="@color/player_background">
 
+    <androidx.media3.ui.AspectRatioFrameLayout
+        android:id="@+id/frame_gen_frame"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        app:resize_mode="fit">
+
+        <SurfaceView
+            android:id="@+id/frame_gen_surface"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </androidx.media3.ui.AspectRatioFrameLayout>
+
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -15,6 +28,33 @@
         app:resize_mode="fit"
         app:show_buffering="always"
         app:use_controller="true" />
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/frame_gen_player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:visibility="gone"
+        app:resize_mode="fit"
+        app:shutter_background_color="@android:color/transparent"
+        app:show_buffering="always"
+        app:surface_type="none"
+        app:use_controller="true" />
+
+    <TextView
+        android:id="@+id/frame_gen_stats"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="60dp"
+        android:background="#99000000"
+        android:fontFamily="monospace"
+        android:padding="6dp"
+        android:textColor="@android:color/white"
+        android:textSize="11sp"
+        android:visibility="gone"
+        tools:text="FG 60→60 fps · 640×360 · Q0 · 8.4 ms" />
 
     <LinearLayout
         android:id="@+id/top_bar"

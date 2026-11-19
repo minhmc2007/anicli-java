@@ -10,7 +10,9 @@ import android.os.Looper;
 import android.text.InputType;
 import android.text.format.DateUtils;
 import android.text.format.Formatter;
+import android.view.Display;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -32,6 +34,7 @@ import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.Version;
 import com.minhmc2077.aniclijava.cache.CacheActivity;
 import com.minhmc2077.aniclijava.data.SyncStore;
+import com.minhmc2077.aniclijava.framegen.FrameGenNative;
 import com.minhmc2077.aniclijava.sync.SyncAuth;
 import com.minhmc2077.aniclijava.util.Settings;
 import com.minhmc2077.aniclijava.util.Ui;
@@ -47,6 +50,11 @@ public final class SettingsActivity extends BaseActivity {
     private MaterialButton anilistButton;
     private MaterialButton syncNowButton;
     private SwitchCompat downloadNextSwitch;
+    private SwitchCompat frameGenSwitch;
+    private SwitchCompat frameGenSkipSwitch;
+    private View frameGenOptions;
+    private TextView frameGenStatus;
+    private MaterialButtonToggleGroup frameGenFpsGroup;
     private SeekBar bufferSeek;
     private TextView bufferValue;
     private SeekBar cacheSeek;
@@ -89,6 +97,7 @@ public final class SettingsActivity extends BaseActivity {
         setUpBuffer();
         setUpCache();
         setUpDownloadNext();
+        setUpFrameGen();
         setUpSource();
 
         findViewById(R.id.github_button).setOnClickListener(v -> openRepository());
@@ -543,6 +552,115 @@ public final class SettingsActivity extends BaseActivity {
         downloadNextSwitch.setChecked(Settings.autoDownloadNext(this));
         downloadNextSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
                 Settings.setAutoDownloadNext(this, isChecked));
+    }
+
+    private void setUpFrameGen() {
+        frameGenSwitch = findViewById(R.id.frame_gen_switch);
+        frameGenOptions = findViewById(R.id.frame_gen_options);
+        frameGenFpsGroup = findViewById(R.id.frame_gen_fps_group);
+        frameGenSkipSwitch = findViewById(R.id.frame_gen_skip_switch);
+        frameGenStatus = findViewById(R.id.frame_gen_status);
+
+        int cap = maxFrameGenFps(displayRefreshRate());
+        int target = Math.min(Settings.frameGenTargetFps(this), cap);
+        Settings.setFrameGenTargetFps(this, target);
+        checkFrameGenFps(target);
+
+        int[] fpsIds = {R.id.frame_gen_fps_30, R.id.frame_gen_fps_60,
+                R.id.frame_gen_fps_90, R.id.frame_gen_fps_120};
+        for (int i = 0; i < fpsIds.length; i++) {
+            View button = findViewById(fpsIds[i]);
+            boolean allowed = Settings.FRAME_GEN_FPS[i] <= cap;
+            button.setEnabled(allowed);
+            button.setAlpha(allowed ? 1f : 0.38f);
+        }
+
+        frameGenFpsGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked) {
+                return;
+            }
+            int fps = frameGenFpsFor(checkedId);
+            if (fps > 0) {
+                Settings.setFrameGenTargetFps(this, fps);
+            }
+        });
+
+        frameGenSkipSwitch.setChecked(Settings.skipFrameGenOpEd(this));
+        frameGenSkipSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
+                Settings.setSkipFrameGenOpEd(this, isChecked));
+
+        if (!FrameGenNative.isSupported()) {
+            Settings.setFrameGenEnabled(this, false);
+            frameGenSwitch.setChecked(false);
+            frameGenSwitch.setEnabled(false);
+            frameGenStatus.setVisibility(View.VISIBLE);
+            frameGenOptions.setVisibility(View.GONE);
+            return;
+        }
+
+        boolean enabled = Settings.frameGenEnabled(this);
+        frameGenSwitch.setChecked(enabled);
+        updateFrameGenOptions(enabled);
+        frameGenSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            Settings.setFrameGenEnabled(this, isChecked);
+            updateFrameGenOptions(isChecked);
+        });
+    }
+
+    private void updateFrameGenOptions(boolean enabled) {
+        frameGenOptions.setVisibility(enabled ? View.VISIBLE : View.GONE);
+    }
+
+    private float displayRefreshRate() {
+        Display display = getWindowManager().getDefaultDisplay();
+        Display.Mode mode = display.getMode();
+        float rate = mode != null ? mode.getRefreshRate() : display.getRefreshRate();
+        return rate > 0f ? rate : 60f;
+    }
+
+    private static int maxFrameGenFps(float displayHz) {
+        int cap = Settings.FRAME_GEN_FPS[0];
+        for (int fps : Settings.FRAME_GEN_FPS) {
+            if (fps <= displayHz + 1f) {
+                cap = fps;
+            }
+        }
+        return cap;
+    }
+
+    private void checkFrameGenFps(int fps) {
+        int id;
+        switch (fps) {
+            case 30:
+                id = R.id.frame_gen_fps_30;
+                break;
+            case 90:
+                id = R.id.frame_gen_fps_90;
+                break;
+            case 120:
+                id = R.id.frame_gen_fps_120;
+                break;
+            default:
+                id = R.id.frame_gen_fps_60;
+                break;
+        }
+        frameGenFpsGroup.check(id);
+    }
+
+    private static int frameGenFpsFor(int buttonId) {
+        if (buttonId == R.id.frame_gen_fps_30) {
+            return 30;
+        }
+        if (buttonId == R.id.frame_gen_fps_90) {
+            return 90;
+        }
+        if (buttonId == R.id.frame_gen_fps_120) {
+            return 120;
+        }
+        if (buttonId == R.id.frame_gen_fps_60) {
+            return 60;
+        }
+        return 0;
     }
 
     private void setUpSource() {

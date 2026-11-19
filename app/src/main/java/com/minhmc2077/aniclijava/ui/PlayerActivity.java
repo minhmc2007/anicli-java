@@ -8,8 +8,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.view.Display;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.WindowManager;
@@ -17,6 +21,7 @@ import android.widget.ImageButton;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -41,6 +46,7 @@ import androidx.media3.exoplayer.offline.Download;
 import androidx.media3.exoplayer.offline.DownloadManager;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
 
 import com.google.android.material.button.MaterialButton;
@@ -50,6 +56,8 @@ import com.minhmc2077.aniclijava.cache.ContentCacheKeyFactory;
 import com.minhmc2077.aniclijava.cache.PlaylistFreshDataSourceFactory;
 import com.minhmc2077.aniclijava.download.EpisodeDownloads;
 import com.minhmc2077.aniclijava.download.NextEpisodePrefetcher;
+import com.minhmc2077.aniclijava.framegen.FrameGenController;
+import com.minhmc2077.aniclijava.framegen.FrameGenNative;
 import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.model.HistoryEntry;
@@ -94,6 +102,16 @@ public final class PlayerActivity extends BaseActivity {
     };
 
     private PlayerView playerView;
+    private PlayerView frameGenPlayerView;
+    private AspectRatioFrameLayout frameGenFrame;
+    private SurfaceView frameGenSurface;
+    private TextView frameGenStats;
+    private FrameGenController frameGen;
+    private boolean frameGenActive;
+    private boolean frameGenOpEd;
+    private boolean frameGenAdjustedToasted;
+    private boolean frameGenUnavailableToasted;
+    private int frameGenTargetFps;
     private ExoPlayer player;
     private CronetDataSource.Factory dataSourceFactory;
 
@@ -147,16 +165,70 @@ public final class PlayerActivity extends BaseActivity {
             if (!skipPolling) {
                 return;
             }
+            updateFrameGenGate();
             updateSkipButton();
             handler.postDelayed(this, SKIP_POLL_MS);
         }
     };
+    private final Runnable updateFrameGenStats = new Runnable() {
+        @Override
+        public void run() {
+            if (!frameGenActive || frameGen == null || frameGenStats == null) {
+                return;
+            }
+            FrameGenController.Stats stats = frameGen.stats();
+            frameGenStats.setText(getString(R.string.player_fg_stats,
+                    stats.targetFps, stats.outputFps,
+                    stats.processWidth, stats.processHeight,
+                    stats.quality, stats.inferenceMs));
+            handler.postDelayed(this, 1000L);
+        }
+    };
+    private final FrameGenController.Listener frameGenListener =
+            new FrameGenController.Listener() {
+                @Override
+                public void onReady(Surface offscreenSurface) {
+                    attachFrameGen(offscreenSurface);
+                }
+
+                @Override
+                public void onUnavailable(String reason) {
+                    if (frameGen != null) {
+                        frameGen.release();
+                        frameGen = null;
+                    }
+                    if (!frameGenUnavailableToasted) {
+                        frameGenUnavailableToasted = true;
+                        Toast.makeText(PlayerActivity.this,
+                                R.string.player_fg_unavailable, Toast.LENGTH_SHORT).show();
+                    }
+                }
+
+                @Override
+                public void onAdjusted(int fps, int quality) {
+                    com.minhmc2077.aniclijava.util.Settings.setFrameGenQuality(
+                            PlayerActivity.this, quality);
+                    if (fps == frameGenTargetFps) {
+                        return;
+                    }
+                    frameGenTargetFps = fps;
+                    com.minhmc2077.aniclijava.util.Settings.setFrameGenTargetFps(
+                            PlayerActivity.this, fps);
+                    if (!frameGenAdjustedToasted) {
+                        frameGenAdjustedToasted = true;
+                        Toast.makeText(PlayerActivity.this,
+                                getString(R.string.player_fg_adjusted, fps),
+                                Toast.LENGTH_SHORT).show();
+                    }
+                }
+            };
 
     private int touchSlop;
     private int swipeMode = SWIPE_NONE;
     private float swipeStartX;
     private float swipeStartY;
     private float swipeStartLevel;
+    private View gestureView;
 
     private String animeId;
     private String animeTitle;
@@ -247,6 +319,10 @@ public final class PlayerActivity extends BaseActivity {
         downloadButton = findViewById(R.id.download_button);
         skipButtonMode = com.minhmc2077.aniclijava.util.Settings.skipButtonMode(this);
         playerView = findViewById(R.id.player_view);
+        frameGenPlayerView = findViewById(R.id.frame_gen_player_view);
+        frameGenFrame = findViewById(R.id.frame_gen_frame);
+        frameGenSurface = findViewById(R.id.frame_gen_surface);
+        frameGenStats = findViewById(R.id.frame_gen_stats);
         stateView = findViewById(R.id.state);
         stateProgress = findViewById(R.id.state_progress);
         stateText = findViewById(R.id.state_text);
@@ -300,16 +376,8 @@ public final class PlayerActivity extends BaseActivity {
             resolveCurrent();
         });
 
-        playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
-        playerView.setControllerAutoShow(true);
-        playerView.setControllerShowTimeoutMs(3000);
-        playerView.setShowSubtitleButton(true);
-        playerView.setControllerVisibilityListener(new PlayerView.ControllerVisibilityListener() {
-            @Override
-            public void onVisibilityChanged(int visibility) {
-                topBar.setVisibility(visibility);
-            }
-        });
+        configurePlayerView(playerView);
+        configurePlayerView(frameGenPlayerView);
 
         dataSourceFactory = new CronetDataSource.Factory(
                 App.get().cronetEngine(), App.get().cronetCallbacks());
@@ -363,6 +431,20 @@ public final class PlayerActivity extends BaseActivity {
             @Override
             public void onVideoSizeChanged(@NonNull VideoSize videoSize) {
                 updateQualityButton();
+                if (videoSize.height > 0) {
+                    frameGenFrame.setAspectRatio(videoSize.pixelWidthHeightRatio
+                            * videoSize.width / videoSize.height);
+                }
+                if (frameGen != null) {
+                    frameGen.setVideoSize(videoSize.width, videoSize.height);
+                }
+            }
+
+            @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                if (frameGen != null) {
+                    frameGen.setPlaying(isPlaying);
+                }
             }
 
             @Override
@@ -387,9 +469,94 @@ public final class PlayerActivity extends BaseActivity {
         updateModeButton();
         updateQualityButton();
         updateNavigation();
+        setUpFrameGen();
 
         loadEpisodes();
         resolveCurrent();
+    }
+
+    private void configurePlayerView(PlayerView view) {
+        view.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
+        view.setControllerAutoShow(true);
+        view.setControllerShowTimeoutMs(3000);
+        view.setShowSubtitleButton(true);
+        view.setControllerVisibilityListener(visibility -> topBar.setVisibility(visibility));
+    }
+
+    private void setUpFrameGen() {
+        frameGenTargetFps = com.minhmc2077.aniclijava.util.Settings.frameGenTargetFps(this);
+        if (!com.minhmc2077.aniclijava.util.Settings.frameGenEnabled(this)
+                || !FrameGenNative.isSupported()) {
+            return;
+        }
+        frameGenOpEd = com.minhmc2077.aniclijava.util.Settings.skipFrameGenOpEd(this);
+        frameGenSurface.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(@NonNull SurfaceHolder holder) {
+                setFrameGenDisplaySurface(holder.getSurface());
+            }
+
+            @Override
+            public void surfaceChanged(@NonNull SurfaceHolder holder, int format,
+                                       int width, int height) {
+                setFrameGenDisplaySurface(holder.getSurface());
+            }
+
+            @Override
+            public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+                setFrameGenDisplaySurface(null);
+            }
+        });
+        frameGen = new FrameGenController(this, frameGenTargetFps, displayRefreshRate(),
+                com.minhmc2077.aniclijava.util.Settings.frameGenQuality(this),
+                frameGenListener);
+        frameGen.prepare();
+    }
+
+    private void setFrameGenDisplaySurface(Surface surface) {
+        if (frameGen != null) {
+            frameGen.setDisplaySurface(surface);
+        }
+    }
+
+    private int displayRefreshRate() {
+        Display display = getWindowManager().getDefaultDisplay();
+        Display.Mode mode = display.getMode();
+        float rate = mode != null ? mode.getRefreshRate() : display.getRefreshRate();
+        return rate > 0f ? Math.round(rate) : 60;
+    }
+
+    private void attachFrameGen(Surface offscreenSurface) {
+        if (destroyed || player == null) {
+            return;
+        }
+        frameGenActive = true;
+        frameGenFrame.setVisibility(View.VISIBLE);
+        frameGenPlayerView.setVisibility(View.VISIBLE);
+        playerView.setPlayer(null);
+        playerView.setVisibility(View.GONE);
+        player.setVideoSurface(offscreenSurface);
+        frameGenPlayerView.setPlayer(player);
+        frameGenStats.setVisibility(View.VISIBLE);
+        frameGen.setPlaying(player.isPlaying());
+        updateFrameGenGate();
+        handler.removeCallbacks(updateFrameGenStats);
+        handler.post(updateFrameGenStats);
+    }
+
+    private void updateFrameGenGate() {
+        if (frameGen == null || !frameGenActive || !frameGenOpEd || player == null) {
+            return;
+        }
+        long position = player.getCurrentPosition();
+        boolean inSkip = false;
+        for (SkipTime skip : skipTimes) {
+            if (position >= skip.startMs && position < skip.endMs) {
+                inSkip = true;
+                break;
+            }
+        }
+        frameGen.setInterpolateEnabled(!inSkip);
     }
 
     private void loadEpisodes() {
@@ -599,7 +766,9 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void loadSkipTimes() {
-        if (skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_OFF || player == null || episode == null) {
+        boolean gating = frameGen != null && frameGenOpEd;
+        if ((skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_OFF && !gating)
+                || player == null || episode == null) {
             return;
         }
         long duration = player.getDuration();
@@ -1196,53 +1365,59 @@ public final class PlayerActivity extends BaseActivity {
 
             @Override
             public boolean onDoubleTap(@NonNull MotionEvent e) {
-                boolean forward = e.getX() >= playerView.getWidth() / 2f;
+                int width = gestureView == null ? 0 : gestureView.getWidth();
+                boolean forward = e.getX() >= width / 2f;
                 seekBy(forward ? SEEK_STEP_MS : -SEEK_STEP_MS);
                 return true;
             }
         });
-        playerView.setOnTouchListener((view, event) -> {
-            seekGestureDetector.onTouchEvent(event);
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    swipeMode = SWIPE_NONE;
-                    swipeStartX = event.getX();
-                    swipeStartY = event.getY();
-                    return false;
-                case MotionEvent.ACTION_MOVE:
-                    if (swipeMode == SWIPE_NONE) {
-                        float dx = event.getX() - swipeStartX;
-                        float dy = event.getY() - swipeStartY;
-                        if (Math.abs(dy) <= touchSlop || Math.abs(dy) <= Math.abs(dx)) {
-                            return false;
-                        }
-                        swipeMode = swipeStartX < view.getWidth() / 2f
-                                ? SWIPE_BRIGHTNESS
-                                : SWIPE_VOLUME;
-                        swipeStartLevel = swipeMode == SWIPE_BRIGHTNESS
-                                ? currentWindowBrightness()
-                                : (player == null ? 1f : player.getVolume());
+        playerView.setOnTouchListener(this::onPlayerTouch);
+        frameGenPlayerView.setOnTouchListener(this::onPlayerTouch);
+    }
+
+    private boolean onPlayerTouch(View view, MotionEvent event) {
+        gestureView = view;
+        seekGestureDetector.onTouchEvent(event);
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                swipeMode = SWIPE_NONE;
+                swipeStartX = event.getX();
+                swipeStartY = event.getY();
+                return false;
+            case MotionEvent.ACTION_MOVE:
+                if (swipeMode == SWIPE_NONE) {
+                    float dx = event.getX() - swipeStartX;
+                    float dy = event.getY() - swipeStartY;
+                    if (Math.abs(dy) <= touchSlop || Math.abs(dy) <= Math.abs(dx)) {
+                        return false;
                     }
-                    applySwipe(event.getY());
+                    swipeMode = swipeStartX < view.getWidth() / 2f
+                            ? SWIPE_BRIGHTNESS
+                            : SWIPE_VOLUME;
+                    swipeStartLevel = swipeMode == SWIPE_BRIGHTNESS
+                            ? currentWindowBrightness()
+                            : (player == null ? 1f : player.getVolume());
+                }
+                applySwipe(event.getY());
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                boolean adjusting = swipeMode != SWIPE_NONE;
+                swipeMode = SWIPE_NONE;
+                if (adjusting) {
+                    handler.removeCallbacks(hideLevelHint);
+                    handler.postDelayed(hideLevelHint, LEVEL_HINT_MS);
                     return true;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    boolean adjusting = swipeMode != SWIPE_NONE;
-                    swipeMode = SWIPE_NONE;
-                    if (adjusting) {
-                        handler.removeCallbacks(hideLevelHint);
-                        handler.postDelayed(hideLevelHint, LEVEL_HINT_MS);
-                        return true;
-                    }
-                    return false;
-                default:
-                    return false;
-            }
-        });
+                }
+                return false;
+            default:
+                return false;
+        }
     }
 
     private void applySwipe(float currentY) {
-        float travel = (swipeStartY - currentY) / Math.max(1f, playerView.getHeight() * 0.7f);
+        int height = gestureView == null ? 1 : gestureView.getHeight();
+        float travel = (swipeStartY - currentY) / Math.max(1f, height * 0.7f);
         float level = clamp(swipeStartLevel + travel, 0f, 1f);
         if (swipeMode == SWIPE_BRIGHTNESS) {
             level = Math.max(BRIGHTNESS_MIN, level);
@@ -1347,8 +1522,15 @@ public final class PlayerActivity extends BaseActivity {
         }
         handler.removeCallbacks(saveProgress);
         handler.postDelayed(saveProgress, SAVE_INTERVAL_MS);
-        if (!skipTimes.isEmpty() && skipButtonMode != com.minhmc2077.aniclijava.util.Settings.SKIP_OFF) {
+        if (!skipTimes.isEmpty() && (skipButtonMode
+                != com.minhmc2077.aniclijava.util.Settings.SKIP_OFF
+                || (frameGen != null && frameGenOpEd))) {
             startSkipPolling();
+        }
+        if (frameGen != null && frameGenActive && player != null && player.isPlaying()) {
+            frameGen.setPlaying(true);
+            handler.removeCallbacks(updateFrameGenStats);
+            handler.post(updateFrameGenStats);
         }
     }
 
@@ -1364,6 +1546,10 @@ public final class PlayerActivity extends BaseActivity {
         stopSkipPolling();
         hideSkipButton();
         savePosition();
+        if (frameGen != null) {
+            frameGen.setPlaying(false);
+        }
+        handler.removeCallbacks(updateFrameGenStats);
         App.get().downloadManager().removeListener(downloadListener);
         if (player != null) {
             player.pause();
@@ -1379,12 +1565,19 @@ public final class PlayerActivity extends BaseActivity {
         cancelPrefetch();
         stopSkipPolling();
         handler.removeCallbacksAndMessages(null);
+        if (frameGen != null) {
+            frameGen.release();
+            frameGen = null;
+        }
         if (player != null) {
             player.release();
             player = null;
         }
         if (playerView != null) {
             playerView.setPlayer(null);
+        }
+        if (frameGenPlayerView != null) {
+            frameGenPlayerView.setPlayer(null);
         }
         super.onDestroy();
     }

@@ -21,10 +21,17 @@ jobs:
           distribution: temurin
           java-version: '25'
 
+      - name: Install NDK and CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --install "ndk;28.2.13676358" "cmake;3.22.1"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build debug APKs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Prepare debug APKs

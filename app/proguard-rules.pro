@@ -7,3 +7,6 @@
 
 # Media3 uses reflection for some optional extensions.
 -dontwarn androidx.media3.**
+
+# JNI binds these methods by name.
+-keep class com.minhmc2077.aniclijava.framegen.FrameGenNative { *; }
