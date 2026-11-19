@@ -480,7 +480,9 @@ public final class PlayerActivity extends BaseActivity {
         view.setControllerAutoShow(true);
         view.setControllerShowTimeoutMs(3000);
         view.setShowSubtitleButton(true);
-        view.setControllerVisibilityListener(visibility -> topBar.setVisibility(visibility));
+        view.setControllerVisibilityListener(
+                (PlayerView.ControllerVisibilityListener)
+                        visibility -> topBar.setVisibility(visibility));
     }
 
     private void setUpFrameGen() {

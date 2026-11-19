@@ -138,7 +138,7 @@ tasks.register('prepareRifeModel') {
 }
 
 tasks.configureEach { task ->
-    if (task.name.startsWith('configureCMake')) {
+    if (task.name.startsWith('configureCMake') || task.name.startsWith('buildCMake')) {
         task.dependsOn('prepareNcnn')
     }
     if (task.name.startsWith('merge') && task.name.contains('Assets')) {
