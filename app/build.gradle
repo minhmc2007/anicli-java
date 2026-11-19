@@ -149,7 +149,8 @@ tasks.configureEach { task ->
 android {
     namespace 'com.minhmc2077.aniclijava'
     compileSdk 37
-    ndkVersion '28.2.13676358'
+    // Match ncnn's prebuilt clang 21 libc++; older NDKs miss __hash_memory.
+    ndkVersion '30.0.16248370'
 
     // Fixed debug key so consecutive CI builds are signed identically.
     signingConfigs {
