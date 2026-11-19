@@ -919,17 +919,17 @@ public final class FrameGenController {
             GLES20.glDeleteProgram(texProgram);
             texProgram = 0;
         }
-        if (oesTexture != 0) {
-            GLES20.glDeleteTextures(1, new int[]{oesTexture}, 0);
-            oesTexture = 0;
+        if (exoSurface != null) {
+            exoSurface.release();
+            exoSurface = null;
         }
         if (surfaceTexture != null) {
             surfaceTexture.release();
             surfaceTexture = null;
         }
-        if (exoSurface != null) {
-            exoSurface.release();
-            exoSurface = null;
+        if (oesTexture != 0) {
+            GLES20.glDeleteTextures(1, new int[]{oesTexture}, 0);
+            oesTexture = 0;
         }
         if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
             EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE,

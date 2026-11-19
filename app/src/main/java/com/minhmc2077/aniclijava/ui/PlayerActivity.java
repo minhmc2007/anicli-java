@@ -208,18 +208,21 @@ public final class PlayerActivity extends BaseActivity {
                 public void onAdjusted(int fps, int quality) {
                     com.minhmc2077.aniclijava.util.Settings.setFrameGenQuality(
                             PlayerActivity.this, quality);
-                    if (fps == frameGenTargetFps) {
+                    boolean rateChanged = fps != frameGenTargetFps;
+                    if (rateChanged) {
+                        frameGenTargetFps = fps;
+                        com.minhmc2077.aniclijava.util.Settings.setFrameGenTargetFps(
+                                PlayerActivity.this, fps);
+                    }
+                    if (frameGenAdjustedToasted) {
                         return;
                     }
-                    frameGenTargetFps = fps;
-                    com.minhmc2077.aniclijava.util.Settings.setFrameGenTargetFps(
-                            PlayerActivity.this, fps);
-                    if (!frameGenAdjustedToasted) {
-                        frameGenAdjustedToasted = true;
-                        Toast.makeText(PlayerActivity.this,
-                                getString(R.string.player_fg_adjusted, fps),
-                                Toast.LENGTH_SHORT).show();
-                    }
+                    frameGenAdjustedToasted = true;
+                    Toast.makeText(PlayerActivity.this,
+                            rateChanged
+                                    ? getString(R.string.player_fg_adjusted, fps)
+                                    : getString(R.string.player_fg_adjusted_quality),
+                            Toast.LENGTH_SHORT).show();
                 }
             };
 
@@ -492,6 +495,9 @@ public final class PlayerActivity extends BaseActivity {
             return;
         }
         frameGenOpEd = com.minhmc2077.aniclijava.util.Settings.skipFrameGenOpEd(this);
+        frameGen = new FrameGenController(this, frameGenTargetFps, displayRefreshRate(),
+                com.minhmc2077.aniclijava.util.Settings.frameGenQuality(this),
+                frameGenListener);
         frameGenSurface.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(@NonNull SurfaceHolder holder) {
@@ -509,9 +515,6 @@ public final class PlayerActivity extends BaseActivity {
                 setFrameGenDisplaySurface(null);
             }
         });
-        frameGen = new FrameGenController(this, frameGenTargetFps, displayRefreshRate(),
-                com.minhmc2077.aniclijava.util.Settings.frameGenQuality(this),
-                frameGenListener);
         frameGen.prepare();
     }
 
