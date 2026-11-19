@@ -31,8 +31,7 @@ set(RIFE_SHADERS
         rife_v4_timestep
         rife_v4_timestep_tta
         warp
-        warp_pack4
-        warp_pack8)
+        warp_pack4)
 
 set(SHADER_HEADERS "")
 foreach(shader ${RIFE_SHADERS})
