@@ -40,17 +40,18 @@ public final class MkissaRepository implements AnimeSource {
     private static final String API = "https://api.mkissa.net/api";
     private static final String SITE = "https://mkissa.to";
     private static final String BOOT_URL =
-            "https://api.mkissa.net/client-crypto/v1/bootstrap?buildId=189&k=k7";
+            "https://api.mkissa.net/client-crypto/v1/bootstrap?buildId=190&k=k7";
     private static final String EPISODE_HASH =
             "670bbf38d0868f446e2346c1e956ca2c40c416e733ca248fd54e04f1c8b99145";
     private static final String LANE = "k7";
-    private static final int BOOT_BUILD = 189;
+    private static final int BOOT_BUILD = 190;
     private static final long WEEK_MS = 604800000L;
+    private static final long DAY_MS = 86400000L;
     private static final String REFERER = SITE + "/";
     private static final String MP4 = "video/mp4";
-    private static final byte[] MASK = mask(hex(
-            "532f1b5cfbb3bec1763a06000d7919f92c94dec5626aa52e616276f4070b06ea"));
-    private static final byte[] BOOT_PREFIX = "iGmNgPGdi:".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] MASK = hex(
+            "65c85a8520d83eafafdff966cc3f5187ab774d238f60338ff4fc0ae7d941ca35");
+    private static final byte[] BOOT_PREFIX = "rEVwtVi:".getBytes(StandardCharsets.UTF_8);
     private static final long TRENDING_TTL = 10L * 60L * 1000L;
     private static final long SEARCH_TTL = 5L * 60L * 1000L;
 
@@ -377,21 +378,30 @@ public final class MkissaRepository implements AnimeSource {
 
     private Boot boot() throws IOException {
         Boot cached = boot;
-        if (cached != null) {
+        if (cached != null && !cached.expired()) {
             return cached;
         }
         synchronized (this) {
-            if (boot != null) {
+            if (boot != null && !boot.expired()) {
                 return boot;
             }
-            long epoch = System.currentTimeMillis() / WEEK_MS;
-            Map<String, String> headers = headers();
-            headers.put("x-build-id", String.valueOf(BOOT_BUILD));
-            headers.put("x-aa-boot", bootToken(epoch));
-
-            CronetHttp.Response response = http.get(BOOT_URL, headers, true);
-            if (!response.isSuccessful()) {
-                throw new IOException("Mkissa bootstrap HTTP " + response.statusCode);
+            long now = System.currentTimeMillis();
+            long week = now / WEEK_MS;
+            long grace = now - week * WEEK_MS < DAY_MS && week > 0 ? week - 1 : week;
+            CronetHttp.Response response = null;
+            long[] epochs = week == grace ? new long[]{week} : new long[]{grace, week};
+            for (long epoch : epochs) {
+                Map<String, String> headers = headers();
+                headers.put("x-build-id", String.valueOf(BOOT_BUILD));
+                headers.put("x-aa-boot", bootToken(epoch));
+                response = http.get(BOOT_URL, headers, true);
+                if (response.isSuccessful()) {
+                    break;
+                }
+            }
+            if (response == null || !response.isSuccessful()) {
+                throw new IOException("Mkissa bootstrap HTTP "
+                        + (response == null ? 0 : response.statusCode));
             }
             JSONObject json = parse(response);
             String partB = json.optString("partB", "");
@@ -403,7 +413,7 @@ public final class MkissaRepository implements AnimeSource {
             for (int i = 0; i < key.length; i++) {
                 key[i] = (byte) (part[i] ^ MASK[i % MASK.length]);
             }
-            boot = new Boot(json.optLong("epoch", epoch), key);
+            boot = new Boot(json.optLong("epoch", week), key, json.optLong("switchAt", 0L));
             return boot;
         }
     }
@@ -444,7 +454,7 @@ public final class MkissaRepository implements AnimeSource {
             byte[] stage = hmac(MASK,
                     (new String(BOOT_PREFIX, StandardCharsets.UTF_8) + BOOT_BUILD)
                             .getBytes(StandardCharsets.UTF_8));
-            String message = epoch + "|" + LANE + "|mkissa|mkissa.to|" + BOOT_BUILD;
+            String message = "mkissa.to~" + LANE + "~" + BOOT_BUILD + "~mkissa~" + epoch;
             return hex(hmac(stage, message.getBytes(StandardCharsets.UTF_8)));
         } catch (GeneralSecurityException error) {
             throw new IOException("Mkissa crypto failed", error);
@@ -679,14 +689,6 @@ public final class MkissaRepository implements AnimeSource {
         return mac.doFinal(value);
     }
 
-    private static byte[] mask(byte[] value) {
-        byte[] result = value.clone();
-        for (int i = 0; i < result.length; i++) {
-            result[i] ^= 12;
-        }
-        return result;
-    }
-
     private static byte[] hex(String value) {
         byte[] result = new byte[value.length() / 2];
         for (int i = 0; i < result.length; i++) {
@@ -720,10 +722,16 @@ public final class MkissaRepository implements AnimeSource {
     private static final class Boot {
         final long epoch;
         final byte[] key;
+        final long switchAt;
 
-        Boot(long epoch, byte[] key) {
+        Boot(long epoch, byte[] key, long switchAt) {
             this.epoch = epoch;
             this.key = key;
+            this.switchAt = switchAt;
+        }
+
+        boolean expired() {
+            return switchAt > 0 && System.currentTimeMillis() >= switchAt;
         }
     }
 
