@@ -18,6 +18,7 @@ public final class Settings {
     private static final String KEY_AUTO_DOWNLOAD_NEXT = "auto_download_next";
     private static final String KEY_UPDATE_CHECK = "update_check";
     private static final String KEY_ANIME_SOURCE = "anime_source";
+    private static final String KEY_FRAME_GEN = "frame_gen";
 
     public static final int SKIP_OFF = 0;
     public static final int SKIP_ON_TIME = 1;
@@ -136,6 +137,14 @@ public final class Settings {
 
     public static void setUpdateCheckEnabled(Context context, boolean enabled) {
         prefs(context).edit().putBoolean(KEY_UPDATE_CHECK, enabled).apply();
+    }
+
+    public static boolean frameGenEnabled(Context context) {
+        return prefs(context).getBoolean(KEY_FRAME_GEN, false);
+    }
+
+    public static void setFrameGenEnabled(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(KEY_FRAME_GEN, enabled).apply();
     }
 
     public static String animeSource(Context context) {

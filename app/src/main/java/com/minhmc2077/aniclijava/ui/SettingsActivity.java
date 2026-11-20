@@ -89,6 +89,7 @@ public final class SettingsActivity extends BaseActivity {
         setUpBuffer();
         setUpCache();
         setUpDownloadNext();
+        setUpFrameGen();
         setUpSource();
 
         findViewById(R.id.github_button).setOnClickListener(v -> openRepository());
@@ -536,6 +537,13 @@ public final class SettingsActivity extends BaseActivity {
         long clamped = Math.max(Settings.CACHE_MIN_BYTES,
                 Math.min(Settings.CACHE_MAX_BYTES, bytes));
         return (int) ((clamped - Settings.CACHE_MIN_BYTES) * CACHE_STEPS / span);
+    }
+
+    private void setUpFrameGen() {
+        SwitchCompat frameGenSwitch = findViewById(R.id.frame_gen_switch);
+        frameGenSwitch.setChecked(Settings.frameGenEnabled(this));
+        frameGenSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
+                Settings.setFrameGenEnabled(this, isChecked));
     }
 
     private void setUpDownloadNext() {

@@ -91,6 +91,7 @@
     <string name="player_download_progress">Downloading episode %1$s (%2$d%%)</string>
     <string name="player_download_failed">Could not start the download.</string>
     <string name="player_playing_offline">Playing from saved data. Missing parts need a connection.</string>
+    <string name="player_fg_stats">FG %1$d→%2$d fps · %3$d×%4$d · %5$.2f ms</string>
     <string name="download_channel_name">Episode downloads</string>
     <string name="download_channel_description">Background video downloads for offline playback</string>
 
@@ -148,6 +149,8 @@
     <string name="settings_cache_usage">%1$s of %2$s used</string>
     <string name="settings_cache_limit">Cache limit</string>
     <string name="settings_cache_view">View cached data</string>
+    <string name="settings_frame_gen">Frame generation (experimental)</string>
+    <string name="settings_frame_gen_hint">Custom GPU video path. This build only verifies frame pacing.</string>
     <string name="settings_download_next">Download next episode</string>
     <string name="settings_download_next_hint">While an episode plays, the next one is prefetched up to the buffer-ahead size. With Whole episode it is downloaded fully. The four newest downloads are kept.</string>
 

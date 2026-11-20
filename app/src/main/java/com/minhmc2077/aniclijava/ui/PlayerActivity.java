@@ -8,8 +8,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
+import android.view.Surface;
+import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.WindowManager;
@@ -41,6 +44,7 @@ import androidx.media3.exoplayer.offline.Download;
 import androidx.media3.exoplayer.offline.DownloadManager;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
 
 import com.google.android.material.button.MaterialButton;
@@ -50,6 +54,7 @@ import com.minhmc2077.aniclijava.cache.ContentCacheKeyFactory;
 import com.minhmc2077.aniclijava.cache.PlaylistFreshDataSourceFactory;
 import com.minhmc2077.aniclijava.download.EpisodeDownloads;
 import com.minhmc2077.aniclijava.download.NextEpisodePrefetcher;
+import com.minhmc2077.aniclijava.framegen.FrameGenController;
 import com.minhmc2077.aniclijava.model.Anime;
 import com.minhmc2077.aniclijava.model.Episode;
 import com.minhmc2077.aniclijava.model.HistoryEntry;
@@ -95,6 +100,24 @@ public final class PlayerActivity extends BaseActivity {
 
     private PlayerView playerView;
     private ExoPlayer player;
+    private AspectRatioFrameLayout frameGenFrame;
+    private SurfaceView frameGenSurface;
+    private TextView frameGenStats;
+    private FrameGenController frameGen;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable frameGenStatsPoll = new Runnable() {
+        @Override
+        public void run() {
+            if (frameGen == null || frameGenStats == null) {
+                return;
+            }
+            FrameGenController.Stats stats = frameGen.stats();
+            frameGenStats.setText(getString(R.string.player_fg_stats,
+                    stats.sourceFps, stats.outputFps, stats.width, stats.height,
+                    stats.frameMs));
+            handler.postDelayed(this, 1000L);
+        }
+    };
     private CronetDataSource.Factory dataSourceFactory;
 
     private View topBar;
@@ -253,6 +276,9 @@ public final class PlayerActivity extends BaseActivity {
         retryButton = findViewById(R.id.retry_button);
         seekIndicator = findViewById(R.id.seek_indicator);
         levelIndicator = findViewById(R.id.level_indicator);
+        frameGenFrame = findViewById(R.id.frame_gen_frame);
+        frameGenSurface = findViewById(R.id.frame_gen_surface);
+        frameGenStats = findViewById(R.id.frame_gen_stats);
 
         Ui.applyTopInset(topBar);
         setUpGestures();
@@ -334,6 +360,7 @@ public final class PlayerActivity extends BaseActivity {
                 .setLoadControl(loadControl)
                 .build();
         playerView.setPlayer(player);
+        startFrameGen();
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int playbackState) {
@@ -363,6 +390,10 @@ public final class PlayerActivity extends BaseActivity {
             @Override
             public void onVideoSizeChanged(@NonNull VideoSize videoSize) {
                 updateQualityButton();
+                if (videoSize.height > 0) {
+                    frameGenFrame.setAspectRatio(videoSize.pixelWidthHeightRatio
+                            * videoSize.width / videoSize.height);
+                }
             }
 
             @Override
@@ -390,6 +421,29 @@ public final class PlayerActivity extends BaseActivity {
 
         loadEpisodes();
         resolveCurrent();
+    }
+
+    private void startFrameGen() {
+        frameGen = new FrameGenController(frameGenSurface, new FrameGenController.Listener() {
+            @Override
+            public void onInputSurface(@NonNull Surface surface) {
+                if (player != null) {
+                    player.setVideoSurface(surface);
+                }
+            }
+
+            @Override
+            public void onFailure(@NonNull String reason) {
+                Log.w("PlayerActivity", "frame gen: " + reason);
+            }
+        });
+        boolean enabled = com.minhmc2077.aniclijava.util.Settings.frameGenEnabled(this);
+        frameGen.setProcessingEnabled(enabled);
+        frameGen.start();
+        if (enabled) {
+            frameGenStats.setVisibility(View.VISIBLE);
+            handler.post(frameGenStatsPoll);
+        }
     }
 
     private void loadEpisodes() {
@@ -1355,7 +1409,22 @@ public final class PlayerActivity extends BaseActivity {
     @Override
     protected void onPause() {
         savePosition();
+        if (frameGen != null) {
+            frameGen.setPaused(true);
+        }
+        handler.removeCallbacks(frameGenStatsPoll);
         super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (frameGen != null) {
+            frameGen.setPaused(false);
+        }
+        if (frameGenStats != null && frameGenStats.getVisibility() == View.VISIBLE) {
+            handler.post(frameGenStatsPoll);
+        }
     }
 
     @Override
@@ -1380,11 +1449,16 @@ public final class PlayerActivity extends BaseActivity {
         stopSkipPolling();
         handler.removeCallbacksAndMessages(null);
         if (player != null) {
+            player.setVideoSurface(null);
             player.release();
             player = null;
         }
         if (playerView != null) {
             playerView.setPlayer(null);
+        }
+        if (frameGen != null) {
+            frameGen.release();
+            frameGen = null;
         }
         super.onDestroy();
     }
