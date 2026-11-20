@@ -355,14 +355,13 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int simpleTextureHandle;
     private final int[] frameTexture = new int[RING];
     private final int[] frameFbo = new int[1];
-    private final long[] framePts = new long[RING];
     private int writeIndex = RING - 1;
     private int frameCount;
     private int videoWidth;
     private int videoHeight;
-    private long clockOffsetNs;
     private long intervalNs = 41_666_667L;
     private long lastPtsNs;
+    private long pairStartNs;
 
     private long draws;
     private long warped;
@@ -763,32 +762,36 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         }
         long pts = inputTexture.getTimestamp();
         if (pts > 0) {
-            trackClock(pts);
+            trackTiming(pts);
         }
         if (drawEveryVsync && pts > 0 && videoWidth > 0 && videoHeight > 0) {
             writeIndex = (writeIndex + 1) % RING;
             copyToFrame(writeIndex);
-            framePts[writeIndex] = pts;
             if (frameCount < RING) {
                 frameCount++;
             }
             if (frameCount >= 2) {
-                flowValid = false;
                 estimateMotion((writeIndex - 1 + RING) % RING, writeIndex);
             }
+            advancePair();
         }
         hasFrame = true;
         newFrame = true;
         sourceCount++;
     }
 
-    private void trackClock(long pts) {
-        long offset = System.nanoTime() - pts;
-        if (clockOffsetNs == 0 || Math.abs(offset - clockOffsetNs) > 500_000_000L) {
-            clockOffsetNs = offset;
+    private void advancePair() {
+        long now = System.nanoTime();
+        if (pairStartNs == 0 || now - pairStartNs > intervalNs + intervalNs / 2) {
+            pairStartNs = now;
         } else {
-            clockOffsetNs += (offset - clockOffsetNs) / 32;
+            // Ideal clock: one interval per frame even when a frame lands late, so the
+            // pair boundary never repeats the frame that was already on screen.
+            pairStartNs += intervalNs;
         }
+    }
+
+    private void trackTiming(long pts) {
         if (lastPtsNs > 0) {
             long delta = pts - lastPtsNs;
             if (delta > 1_000_000L && delta < 500_000_000L) {
@@ -961,6 +964,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         frameCount = 0;
         writeIndex = RING - 1;
         lastPtsNs = 0;
+        pairStartNs = 0;
         flowValid = false;
         flowPrev = -1;
         flowNext = -1;
@@ -1021,21 +1025,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
     }
 
-    private int frameForTime(long contentNs) {
-        int best = -1;
-        long bestDelta = Long.MAX_VALUE;
-        int valid = Math.min(frameCount, RING);
-        for (int n = 0; n < valid; n++) {
-            int index = (writeIndex - n + RING) % RING;
-            long delta = Math.abs(framePts[index] - contentNs);
-            if (delta < bestDelta) {
-                bestDelta = delta;
-                best = index;
-            }
-        }
-        return best;
-    }
-
     @Override
     public void doFrame(long frameTimeNanos) {
         if (released) {
@@ -1083,41 +1072,17 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
         boolean drawn = false;
-        if (drawEveryVsync && frameCount > 0 && clockOffsetNs != 0) {
-            long contentNs = frameTimeNanos - clockOffsetNs - delayNs();
-            int before = -1;
-            int after = -1;
-            int valid = Math.min(frameCount, RING);
-            for (int n = 0; n < valid; n++) {
-                int index = (writeIndex - n + RING) % RING;
-                long pts = framePts[index];
-                if (pts <= contentNs && (before < 0 || pts > framePts[before])) {
-                    before = index;
-                }
-                if (pts >= contentNs && (after < 0 || pts < framePts[after])) {
-                    after = index;
-                }
+        if (drawEveryVsync && frameCount > 0) {
+            if (flowValid) {
+                float timestep = (frameTimeNanos - pairStartNs) / (float) intervalNs;
+                drawWarp(flowPrev, flowNext, Math.max(0f, Math.min(1f, timestep)));
+                warped++;
+            } else {
+                drawQuad(simpleProgram, simplePositionHandle, simpleTexCoordHandle,
+                        GLES20.GL_TEXTURE_2D, frameTexture[writeIndex], simpleTextureHandle,
+                        -1, null);
             }
-            if (before >= 0 && after >= 0 && after != before && flowValid
-                    && before == flowPrev && after == flowNext) {
-                long span = framePts[after] - framePts[before];
-                if (span > 0) {
-                    float timestep = (contentNs - framePts[before]) / (float) span;
-                    timestep = Math.max(0f, Math.min(1f, timestep));
-                    drawWarp(before, after, timestep);
-                    warped++;
-                    drawn = true;
-                }
-            }
-            if (!drawn) {
-                int frame = before >= 0 ? before : frameForTime(contentNs);
-                if (frame >= 0) {
-                    drawQuad(simpleProgram, simplePositionHandle, simpleTexCoordHandle,
-                            GLES20.GL_TEXTURE_2D, frameTexture[frame], simpleTextureHandle,
-                            -1, null);
-                    drawn = true;
-                }
-            }
+            drawn = true;
         }
         if (!drawn) {
             drawQuad(program, positionHandle, texCoordHandle, GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
@@ -1169,10 +1134,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glUniform1f(warpTimestepHandle, timestep);
         GLES20.glUniform2f(warpStepHandle, 1f / videoWidth, 1f / videoHeight);
         drawFullQuad();
-    }
-
-    private long delayNs() {
-        return intervalNs + 4_000_000L;
     }
 
     private static FloatBuffer buffer(float[] values) {
