@@ -151,6 +151,9 @@
     <string name="settings_frame_gen">Frame generation (experimental)</string>
     <string name="settings_frame_gen_hint">Interpolates between decoded frames through the app\'s own GPU path. Costs some battery and adds one frame of latency.</string>
     <string name="settings_frame_gen_fps">Target frame rate</string>
+    <string name="settings_frame_gen_warning_title">Frame generation is not DLSS</string>
+    <string name="settings_frame_gen_warning_message">It warps existing frames on the GPU: no neural network, no invented detail. Phones cannot run RIFE in real time, so this is the lightweight option.\n\nIt looks good on slow, calm shows — dialogue, romance, slice of life, scenery. It cannot handle fast combat, a character moving against a panning background, or frequent cuts; expect warping, ghosting, or a brief step there.\n\nIt also adds one source frame of latency.</string>
+    <string name="settings_frame_gen_warning_confirm">Turn on</string>
     <string name="settings_frame_gen_fps_value">%1$d fps</string>
     <string name="settings_frame_gen_fps_60">60 fps</string>
     <string name="settings_frame_gen_fps_120">120 fps</string>

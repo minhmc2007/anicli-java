@@ -544,15 +544,36 @@ public final class SettingsActivity extends BaseActivity {
         SwitchCompat frameGenSwitch = findViewById(R.id.frame_gen_switch);
         View fpsRow = findViewById(R.id.frame_gen_fps_row);
         TextView fpsValue = findViewById(R.id.frame_gen_fps_value);
-        fpsRow.setVisibility(Settings.frameGenEnabled(this) ? View.VISIBLE : View.GONE);
+        boolean enabled = Settings.frameGenEnabled(this);
+        fpsRow.setVisibility(enabled ? View.VISIBLE : View.GONE);
         fpsValue.setText(getString(R.string.settings_frame_gen_fps_value,
                 Settings.frameGenTargetFps(this)));
-        frameGenSwitch.setChecked(Settings.frameGenEnabled(this));
+        frameGenSwitch.setChecked(enabled);
         frameGenSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            Settings.setFrameGenEnabled(this, isChecked);
-            fpsRow.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+            if (isChecked) {
+                confirmFrameGenEnable(frameGenSwitch, fpsRow);
+            } else {
+                applyFrameGenEnabled(false, fpsRow);
+            }
         });
         fpsRow.setOnClickListener(v -> pickFrameGenFps(fpsValue));
+    }
+
+    private void confirmFrameGenEnable(SwitchCompat frameGenSwitch, View fpsRow) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_frame_gen_warning_title)
+                .setMessage(R.string.settings_frame_gen_warning_message)
+                .setPositiveButton(R.string.settings_frame_gen_warning_confirm,
+                        (dialog, which) -> applyFrameGenEnabled(true, fpsRow))
+                .setNegativeButton(android.R.string.cancel,
+                        (dialog, which) -> frameGenSwitch.setChecked(false))
+                .setOnCancelListener(dialog -> frameGenSwitch.setChecked(false))
+                .show();
+    }
+
+    private void applyFrameGenEnabled(boolean enabled, View fpsRow) {
+        Settings.setFrameGenEnabled(this, enabled);
+        fpsRow.setVisibility(enabled ? View.VISIBLE : View.GONE);
     }
 
     private void pickFrameGenFps(TextView fpsValue) {
