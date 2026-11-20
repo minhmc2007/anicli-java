@@ -439,7 +439,8 @@ public final class PlayerActivity extends BaseActivity {
                             * videoSize.width / videoSize.height);
                 }
                 if (frameGen != null) {
-                    frameGen.setVideoSize(videoSize.width, videoSize.height);
+                    frameGen.setVideoSize(videoSize.width, videoSize.height,
+                            videoSize.pixelWidthHeightRatio);
                 }
             }
 
@@ -1570,6 +1571,12 @@ public final class PlayerActivity extends BaseActivity {
         cancelPrefetch();
         stopSkipPolling();
         handler.removeCallbacksAndMessages(null);
+        if (frameGenPlayerView != null) {
+            frameGenPlayerView.setPlayer(null);
+        }
+        if (player != null) {
+            player.clearVideoSurface();
+        }
         if (frameGen != null) {
             frameGen.release();
             frameGen = null;
@@ -1580,9 +1587,6 @@ public final class PlayerActivity extends BaseActivity {
         }
         if (playerView != null) {
             playerView.setPlayer(null);
-        }
-        if (frameGenPlayerView != null) {
-            frameGenPlayerView.setPlayer(null);
         }
         super.onDestroy();
     }

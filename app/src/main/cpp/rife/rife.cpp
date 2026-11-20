@@ -60,17 +60,26 @@ RIFE::~RIFE()
 
     if (uhd_mode)
     {
-        rife_uhd_downscale_image->destroy_pipeline(flownet.opt);
-        delete rife_uhd_downscale_image;
+        if (rife_uhd_downscale_image)
+        {
+            rife_uhd_downscale_image->destroy_pipeline(flownet.opt);
+            delete rife_uhd_downscale_image;
+        }
 
-        rife_uhd_upscale_flow->destroy_pipeline(flownet.opt);
-        delete rife_uhd_upscale_flow;
+        if (rife_uhd_upscale_flow)
+        {
+            rife_uhd_upscale_flow->destroy_pipeline(flownet.opt);
+            delete rife_uhd_upscale_flow;
+        }
 
-        rife_uhd_double_flow->destroy_pipeline(flownet.opt);
-        delete rife_uhd_double_flow;
+        if (rife_uhd_double_flow)
+        {
+            rife_uhd_double_flow->destroy_pipeline(flownet.opt);
+            delete rife_uhd_double_flow;
+        }
     }
 
-    if (rife_v2)
+    if (rife_v2 && rife_v2_slice_flow)
     {
         rife_v2_slice_flow->destroy_pipeline(flownet.opt);
         delete rife_v2_slice_flow;
@@ -78,7 +87,7 @@ RIFE::~RIFE()
 }
 
 #if _WIN32
-static void load_param_model(ncnn::Net& net, const std::wstring& modeldir, const wchar_t* name)
+static int load_param_model(ncnn::Net& net, const std::wstring& modeldir, const wchar_t* name)
 {
     wchar_t parampath[256];
     wchar_t modelpath[256];
@@ -90,34 +99,47 @@ static void load_param_model(ncnn::Net& net, const std::wstring& modeldir, const
         if (!fp)
         {
             fwprintf(stderr, L"_wfopen %ls failed\n", parampath);
+            return -1;
         }
 
-        net.load_param(fp);
+        int ret = net.load_param(fp);
 
         fclose(fp);
+
+        if (ret != 0)
+            return ret;
     }
     {
         FILE* fp = _wfopen(modelpath, L"rb");
         if (!fp)
         {
             fwprintf(stderr, L"_wfopen %ls failed\n", modelpath);
+            return -1;
         }
 
-        net.load_model(fp);
+        int ret = net.load_model(fp);
 
         fclose(fp);
+
+        if (ret != 0)
+            return ret;
     }
+
+    return 0;
 }
 #else
-static void load_param_model(ncnn::Net& net, const std::string& modeldir, const char* name)
+static int load_param_model(ncnn::Net& net, const std::string& modeldir, const char* name)
 {
     char parampath[256];
     char modelpath[256];
     sprintf(parampath, "%s/%s.param", modeldir.c_str(), name);
     sprintf(modelpath, "%s/%s.bin", modeldir.c_str(), name);
 
-    net.load_param(parampath);
-    net.load_model(modelpath);
+    int ret = net.load_param(parampath);
+    if (ret != 0)
+        return ret;
+
+    return net.load_model(modelpath);
 }
 #endif
 
@@ -148,18 +170,30 @@ int RIFE::load(const std::string& modeldir)
     fusionnet.register_custom_layer("rife.Warp", Warp_layer_creator);
 
 #if _WIN32
-    load_param_model(flownet, modeldir, L"flownet");
+    int load_ret = load_param_model(flownet, modeldir, L"flownet");
+    if (load_ret != 0)
+        return load_ret;
     if (!rife_v4)
     {
-        load_param_model(contextnet, modeldir, L"contextnet");
-        load_param_model(fusionnet, modeldir, L"fusionnet");
+        load_ret = load_param_model(contextnet, modeldir, L"contextnet");
+        if (load_ret != 0)
+            return load_ret;
+        load_ret = load_param_model(fusionnet, modeldir, L"fusionnet");
+        if (load_ret != 0)
+            return load_ret;
     }
 #else
-    load_param_model(flownet, modeldir, "flownet");
+    int load_ret = load_param_model(flownet, modeldir, "flownet");
+    if (load_ret != 0)
+        return load_ret;
     if (!rife_v4)
     {
-        load_param_model(contextnet, modeldir, "contextnet");
-        load_param_model(fusionnet, modeldir, "fusionnet");
+        load_ret = load_param_model(contextnet, modeldir, "contextnet");
+        if (load_ret != 0)
+            return load_ret;
+        load_ret = load_param_model(fusionnet, modeldir, "fusionnet");
+        if (load_ret != 0)
+            return load_ret;
     }
 #endif
 
@@ -189,7 +223,10 @@ int RIFE::load(const std::string& modeldir)
 
             rife_preproc = new ncnn::Pipeline(vkdev);
             rife_preproc->set_optimal_local_size_xyz(8, 8, 3);
-            rife_preproc->create(spirv.data(), spirv.size() * 4, specializations);
+            if (spirv.empty())
+                return -1;
+            if (rife_preproc->create(spirv.data(), spirv.size() * 4, specializations) != 0)
+                return -1;
         }
 
         {
@@ -208,7 +245,10 @@ int RIFE::load(const std::string& modeldir)
 
             rife_postproc = new ncnn::Pipeline(vkdev);
             rife_postproc->set_optimal_local_size_xyz(8, 8, 3);
-            rife_postproc->create(spirv.data(), spirv.size() * 4, specializations);
+            if (spirv.empty())
+                return -1;
+            if (rife_postproc->create(spirv.data(), spirv.size() * 4, specializations) != 0)
+                return -1;
         }
     }
 
@@ -371,7 +411,10 @@ int RIFE::load(const std::string& modeldir)
 
             rife_v4_timestep = new ncnn::Pipeline(vkdev);
             rife_v4_timestep->set_optimal_local_size_xyz(8, 8, 1);
-            rife_v4_timestep->create(spirv.data(), spirv.size() * 4, specializations);
+            if (spirv.empty())
+                return -1;
+            if (rife_v4_timestep->create(spirv.data(), spirv.size() * 4, specializations) != 0)
+                return -1;
         }
     }
 

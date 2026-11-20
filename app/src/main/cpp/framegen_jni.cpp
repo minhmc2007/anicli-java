@@ -5,7 +5,10 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
-#include <vector>
+
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#endif
 
 #include "gpu.h"
 #include "rife.h"
@@ -18,15 +21,28 @@ namespace {
 
 std::mutex g_mutex;
 RIFE* g_rife = nullptr;
-std::vector<uint8_t> g_rgb0;
-std::vector<uint8_t> g_rgb1;
 
-inline void rgbaToRgb(const uint8_t* src, uint8_t* dst, size_t pixels) {
-    for (size_t i = 0; i < pixels; ++i) {
+void rgbaToRgb(const uint8_t* src, uint8_t* dst, size_t pixels) {
+    size_t i = 0;
+#if defined(__aarch64__)
+    for (; i + 16 <= pixels; i += 16) {
+        uint8x16x4_t rgba = vld4q_u8(src + i * 4);
+        uint8x16x3_t rgb;
+        rgb.val[0] = rgba.val[0];
+        rgb.val[1] = rgba.val[1];
+        rgb.val[2] = rgba.val[2];
+        vst3q_u8(dst + i * 3, rgb);
+    }
+#endif
+    for (; i < pixels; ++i) {
         dst[i * 3] = src[i * 4];
         dst[i * 3 + 1] = src[i * 4 + 1];
         dst[i * 3 + 2] = src[i * 4 + 2];
     }
+}
+
+inline size_t alignedRgbBytes(size_t pixels) {
+    return (pixels * 3 + 15) & ~static_cast<size_t>(15);
 }
 
 } // namespace
@@ -82,6 +98,24 @@ Java_com_minhmc2077_aniclijava_framegen_FrameGenNative_nativeRelease(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_com_minhmc2077_aniclijava_framegen_FrameGenNative_nativePackRgb(
+        JNIEnv* env, jclass, jobject rgba, jobject rgb, jint width, jint height) {
+    if (width <= 0 || height <= 0) {
+        return JNI_FALSE;
+    }
+    auto* src = static_cast<uint8_t*>(env->GetDirectBufferAddress(rgba));
+    auto* dst = static_cast<uint8_t*>(env->GetDirectBufferAddress(rgb));
+    size_t pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+    if (src == nullptr || dst == nullptr
+            || env->GetDirectBufferCapacity(rgba) < static_cast<jlong>(pixels * 4)
+            || env->GetDirectBufferCapacity(rgb) < static_cast<jlong>(pixels * 3)) {
+        return JNI_FALSE;
+    }
+    rgbaToRgb(src, dst, pixels);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_minhmc2077_aniclijava_framegen_FrameGenNative_nativeInterpolate(
         JNIEnv* env, jclass, jobject frame0, jobject frame1, jobject output,
         jint width, jint height, jfloat timestep) {
@@ -94,11 +128,11 @@ Java_com_minhmc2077_aniclijava_framegen_FrameGenNative_nativeInterpolate(
     if (src0 == nullptr || src1 == nullptr || dst == nullptr) {
         return JNI_FALSE;
     }
-    jlong capacity = env->GetDirectBufferCapacity(output);
     size_t pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
-    // ncnn aligns each plane to 16 bytes, so the buffers need that much slack.
-    size_t bytes = (pixels * 3 + 15) & ~static_cast<size_t>(15);
-    if (capacity < static_cast<jlong>(bytes)) {
+    size_t bytes = alignedRgbBytes(pixels);
+    if (env->GetDirectBufferCapacity(frame0) < static_cast<jlong>(bytes)
+            || env->GetDirectBufferCapacity(frame1) < static_cast<jlong>(bytes)
+            || env->GetDirectBufferCapacity(output) < static_cast<jlong>(bytes)) {
         return JNI_FALSE;
     }
 
@@ -107,13 +141,8 @@ Java_com_minhmc2077_aniclijava_framegen_FrameGenNative_nativeInterpolate(
         return JNI_FALSE;
     }
 
-    g_rgb0.resize(bytes);
-    g_rgb1.resize(bytes);
-    rgbaToRgb(src0, g_rgb0.data(), pixels);
-    rgbaToRgb(src1, g_rgb1.data(), pixels);
-
-    ncnn::Mat in0(width, height, g_rgb0.data(), static_cast<size_t>(3), 1);
-    ncnn::Mat in1(width, height, g_rgb1.data(), static_cast<size_t>(3), 1);
+    ncnn::Mat in0(width, height, src0, static_cast<size_t>(3), 1);
+    ncnn::Mat in1(width, height, src1, static_cast<size_t>(3), 1);
     ncnn::Mat out(width, height, dst, static_cast<size_t>(3), 1);
 
     return g_rife->process_v4(in0, in1, timestep, out) == 0 ? JNI_TRUE : JNI_FALSE;

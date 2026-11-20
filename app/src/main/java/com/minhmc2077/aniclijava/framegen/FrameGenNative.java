@@ -33,6 +33,8 @@ public final class FrameGenNative {
 
     static native void nativeRelease();
 
+    static native boolean nativePackRgb(ByteBuffer rgba, ByteBuffer rgb, int width, int height);
+
     static native boolean nativeInterpolate(ByteBuffer frame0, ByteBuffer frame1,
                                             ByteBuffer output, int width, int height,
                                             float timestep);

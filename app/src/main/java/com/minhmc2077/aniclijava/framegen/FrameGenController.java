@@ -66,6 +66,8 @@ public final class FrameGenController {
     private final Stats stats = new Stats();
     private final HandlerThread thread;
     private final Handler handler;
+    private final HandlerThread inferenceThread;
+    private final Handler inferenceHandler;
     private final float displayHz;
     private final float[] stMatrix = new float[16];
 
@@ -96,6 +98,7 @@ public final class FrameGenController {
 
     private int videoWidth;
     private int videoHeight;
+    private float videoAspect = 16f / 9f;
     private int processWidth;
     private int processHeight;
     private int quality;
@@ -104,11 +107,21 @@ public final class FrameGenController {
     private final int[] frameTexture = new int[RING];
     private final int[] frameFramebuffer = new int[RING];
     private final ByteBuffer[] frameRgba = new ByteBuffer[RING];
+    private final ByteBuffer[] frameRgb = new ByteBuffer[RING];
     private final long[] framePts = new long[RING];
     private final boolean[] frameCut = new boolean[RING];
     private final boolean[] frameDuplicate = new boolean[RING];
     private int generatedTexture;
-    private ByteBuffer generatedRgb;
+    private boolean generatedValid;
+    private long generatedNs;
+
+    private boolean jobInFlight;
+    private int jobWidth;
+    private int jobHeight;
+    private int bufferGeneration;
+    private ByteBuffer jobRgb0;
+    private ByteBuffer jobRgb1;
+    private ByteBuffer jobRgbOut;
 
     private long lastFramePts;
     private long intervalNs;
@@ -117,6 +130,7 @@ public final class FrameGenController {
     private long lastQualityCheckNs;
     private int presentedInSample;
     private int inferredInSample;
+    private int slowSamples;
     private float inferenceMs;
 
     public FrameGenController(Context context, int requestedFps, int displayHz,
@@ -131,6 +145,9 @@ public final class FrameGenController {
         this.thread = new HandlerThread("framegen");
         this.thread.start();
         this.handler = new Handler(thread.getLooper());
+        this.inferenceThread = new HandlerThread("framegen-rife");
+        this.inferenceThread.start();
+        this.inferenceHandler = new Handler(inferenceThread.getLooper());
     }
 
     public Stats stats() {
@@ -145,11 +162,13 @@ public final class FrameGenController {
         handler.post(() -> setDisplaySurfaceInternal(surface));
     }
 
-    public void setVideoSize(int width, int height) {
+    public void setVideoSize(int width, int height, float pixelRatio) {
         handler.post(() -> {
             if (released || width <= 0 || height <= 0) {
                 return;
             }
+            float ratio = pixelRatio > 0f ? pixelRatio : 1f;
+            videoAspect = ratio * width / height;
             if (width == videoWidth && height == videoHeight) {
                 return;
             }
@@ -187,6 +206,9 @@ public final class FrameGenController {
         released = true;
         handler.post(() -> {
             stopFrameLoop();
+            bufferGeneration++;
+            generatedValid = false;
+            inferenceThread.quitSafely();
             if (nativeReady) {
                 nativeReady = false;
                 FrameGenNative.nativeRelease();
@@ -449,6 +471,8 @@ public final class FrameGenController {
         nextSlot = (nextSlot + 1) % RING;
         drawOesToFrame(nextSlot);
         readFrame(nextSlot);
+        FrameGenNative.nativePackRgb(frameRgba[nextSlot], frameRgb[nextSlot],
+                processWidth, processHeight);
         framePts[nextSlot] = pts;
         if (previous >= 0) {
             float difference = frameDifference(frameRgba[previous], frameRgba[nextSlot],
@@ -458,6 +482,11 @@ public final class FrameGenController {
         } else {
             frameCut[nextSlot] = false;
             frameDuplicate[nextSlot] = false;
+        }
+        if (frameCut[nextSlot]) {
+            bufferGeneration++;
+            generatedValid = false;
+            generatedNs = 0;
         }
         if (!playing) {
             renderCurrentFrame();
@@ -482,6 +511,9 @@ public final class FrameGenController {
     }
 
     private void invalidateFrames() {
+        bufferGeneration++;
+        generatedValid = false;
+        generatedNs = 0;
         for (int i = 0; i < RING; i++) {
             framePts[i] = 0;
             frameCut[i] = false;
@@ -542,26 +574,43 @@ public final class FrameGenController {
             }
         }
 
-        boolean drawn = false;
-        if (interpolateEnabled && nativeReady && before >= 0 && after >= 0
+        boolean canInterpolate = interpolateEnabled && nativeReady;
+        if (canInterpolate && !jobInFlight && before >= 0 && after >= 0
                 && before != after && !frameCut[after] && !frameDuplicate[after]) {
             long span = framePts[after] - framePts[before];
             if (span > 0) {
-                float timestep = (desired - framePts[before]) / (float) span;
+                long target = desired + minGap;
+                float timestep = (target - framePts[before]) / (float) span;
                 if (timestep > 0.04f && timestep < 0.96f) {
-                    drawn = interpolate(before, after, timestep);
+                    submitInterpolation(before, after, timestep, target);
                 }
             }
         }
-        if (!drawn) {
-            int slot = newest;
-            if (before >= 0 && after >= 0 && before != after) {
-                slot = desired - framePts[before] < framePts[after] - desired
-                        ? before : after;
+
+        int slot = newest;
+        long bestDelta = Long.MAX_VALUE;
+        for (int i = 0; i < RING; i++) {
+            long pts = framePts[i];
+            if (pts <= 0) {
+                continue;
             }
-            drawFrameTexture(frameTexture[slot]);
-            stats.interpolating = false;
+            long delta = Math.abs(pts - desired);
+            if (delta < bestDelta) {
+                bestDelta = delta;
+                slot = i;
+            }
         }
+
+        boolean generated = false;
+        if (canInterpolate && generatedValid && generatedTexture != 0) {
+            long delta = Math.abs(generatedNs - desired);
+            if (delta <= interval && delta < bestDelta) {
+                bestDelta = delta;
+                generated = true;
+            }
+        }
+        drawFrameTexture(generated ? generatedTexture : frameTexture[slot]);
+        stats.interpolating = generated;
         present(frameTimeNanos);
         updateCounters();
     }
@@ -580,24 +629,76 @@ public final class FrameGenController {
         present(System.nanoTime());
     }
 
-    private boolean interpolate(int slot0, int slot1, float timestep) {
-        long start = SystemClock.elapsedRealtimeNanos();
-        boolean ok = FrameGenNative.nativeInterpolate(frameRgba[slot0], frameRgba[slot1],
-                generatedRgb, processWidth, processHeight, timestep);
-        long elapsed = SystemClock.elapsedRealtimeNanos() - start;
-        float ms = elapsed / 1_000_000f;
+    private void submitInterpolation(int slot0, int slot1, float timestep, long targetNs) {
+        if (!ensureJobBuffers(processWidth, processHeight)) {
+            return;
+        }
+        copyRgb(frameRgb[slot0], jobRgb0);
+        copyRgb(frameRgb[slot1], jobRgb1);
+        final ByteBuffer in0 = jobRgb0;
+        final ByteBuffer in1 = jobRgb1;
+        final ByteBuffer out = jobRgbOut;
+        final int width = jobWidth;
+        final int height = jobHeight;
+        final int generation = bufferGeneration;
+        final long target = targetNs;
+        jobInFlight = true;
+        inferenceHandler.post(() -> {
+            long start = SystemClock.elapsedRealtimeNanos();
+            boolean ok = FrameGenNative.nativeInterpolate(in0, in1, out, width, height,
+                    timestep);
+            float ms = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000f;
+            handler.post(() -> onJobDone(ok, ms, generation, width, height, out, target));
+        });
+    }
+
+    private void onJobDone(boolean ok, float ms, int generation, int width, int height,
+                           ByteBuffer out, long targetNs) {
+        jobInFlight = false;
+        if (released) {
+            return;
+        }
         inferenceMs = inferenceMs == 0f ? ms : inferenceMs * 0.9f + ms * 0.1f;
+        stats.inferenceMs = inferenceMs;
         inferredInSample++;
-        if (!ok) {
-            return false;
+        if (!ok || generation != bufferGeneration || width != processWidth
+                || height != processHeight || generatedTexture == 0) {
+            return;
         }
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, generatedTexture);
         GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1);
-        GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, processWidth, processHeight,
-                GLES20.GL_RGB, GLES20.GL_UNSIGNED_BYTE, generatedRgb);
-        drawFrameTexture(generatedTexture);
-        stats.interpolating = true;
+        GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, width, height,
+                GLES20.GL_RGB, GLES20.GL_UNSIGNED_BYTE, out);
+        generatedNs = targetNs;
+        generatedValid = true;
+    }
+
+    private boolean ensureJobBuffers(int width, int height) {
+        if (width <= 0 || height <= 0) {
+            return false;
+        }
+        int bytes = (width * height * 3 + 15) & ~15;
+        if (jobRgb0 != null && jobWidth == width && jobHeight == height
+                && jobRgb0.capacity() >= bytes) {
+            return true;
+        }
+        jobRgb0 = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+        jobRgb1 = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+        jobRgbOut = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+        jobWidth = width;
+        jobHeight = height;
         return true;
+    }
+
+    private static void copyRgb(ByteBuffer src, ByteBuffer dst) {
+        if (src == null || dst == null) {
+            return;
+        }
+        ByteBuffer from = src.duplicate();
+        ByteBuffer to = dst.duplicate();
+        from.clear();
+        to.clear();
+        to.put(from);
     }
 
     private void present(long frameTimeNanos) {
@@ -620,6 +721,17 @@ public final class FrameGenController {
             lastFpsSampleNs = now;
             stats.outputFps = Math.round(fps);
             stats.inferenceMs = inferenceMs;
+            if (playing && interpolateEnabled) {
+                if (fps < effectiveFps * 0.9f) {
+                    slowSamples++;
+                } else {
+                    slowSamples = 0;
+                }
+                if (slowSamples >= 2) {
+                    slowSamples = 0;
+                    dropQuality();
+                }
+            }
         }
         if (inferredInSample > 0 && now - lastQualityCheckNs >= 2_000_000_000L) {
             float budget = 900f / Math.max(1, effectiveFps);
@@ -697,11 +809,15 @@ public final class FrameGenController {
             return;
         }
         releaseProcessBuffers();
+        bufferGeneration++;
+        generatedValid = false;
+        generatedNs = 0;
         processWidth = newWidth;
         processHeight = newHeight;
         stats.processWidth = processWidth;
         stats.processHeight = processHeight;
         int pixels = processWidth * processHeight;
+        int rgbBytes = (pixels * 3 + 15) & ~15;
 
         for (int i = 0; i < RING; i++) {
             int[] textures = new int[1];
@@ -726,6 +842,7 @@ public final class FrameGenController {
             GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER,
                     GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, frameTexture[i], 0);
             frameRgba[i] = ByteBuffer.allocateDirect(pixels * 4).order(ByteOrder.nativeOrder());
+            frameRgb[i] = ByteBuffer.allocateDirect(rgbBytes).order(ByteOrder.nativeOrder());
             framePts[i] = 0;
             frameCut[i] = false;
             frameDuplicate[i] = false;
@@ -743,9 +860,8 @@ public final class FrameGenController {
                 GLES20.GL_CLAMP_TO_EDGE);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T,
                 GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, processWidth,
-                processHeight, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
-        generatedRgb = ByteBuffer.allocateDirect(pixels * 3 + 16).order(ByteOrder.nativeOrder());
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGB, processWidth,
+                processHeight, 0, GLES20.GL_RGB, GLES20.GL_UNSIGNED_BYTE, null);
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
         intervalNs = 0;
         lastFramePts = 0;
@@ -759,6 +875,7 @@ public final class FrameGenController {
                 frameTexture[i] = 0;
                 frameFramebuffer[i] = 0;
                 frameRgba[i] = null;
+                frameRgb[i] = null;
                 framePts[i] = 0;
                 frameCut[i] = false;
                 frameDuplicate[i] = false;
@@ -768,7 +885,8 @@ public final class FrameGenController {
             GLES20.glDeleteTextures(1, new int[]{generatedTexture}, 0);
             generatedTexture = 0;
         }
-        generatedRgb = null;
+        generatedValid = false;
+        generatedNs = 0;
         processWidth = 0;
         processHeight = 0;
     }
@@ -811,7 +929,22 @@ public final class FrameGenController {
     }
 
     private int[] fitViewport() {
-        return new int[]{0, 0, displayWidth, displayHeight};
+        int width = displayWidth;
+        int height = displayHeight;
+        float aspect = videoAspect;
+        if (width <= 0 || height <= 0 || aspect <= 0f) {
+            return new int[]{0, 0, width, height};
+        }
+        float displayAspect = width / (float) height;
+        if (displayAspect > aspect) {
+            int viewWidth = Math.max(2, Math.round(height * aspect));
+            return new int[]{(width - viewWidth) / 2, 0, viewWidth, height};
+        }
+        if (displayAspect < aspect) {
+            int viewHeight = Math.max(2, Math.round(width / aspect));
+            return new int[]{0, (height - viewHeight) / 2, width, viewHeight};
+        }
+        return new int[]{0, 0, width, height};
     }
 
     private boolean createQuad() {
@@ -911,6 +1044,12 @@ public final class FrameGenController {
 
     private void releaseGl() {
         releaseProcessBuffers();
+        jobRgb0 = null;
+        jobRgb1 = null;
+        jobRgbOut = null;
+        jobWidth = 0;
+        jobHeight = 0;
+        jobInFlight = false;
         if (oesProgram != 0) {
             GLES20.glDeleteProgram(oesProgram);
             oesProgram = 0;
