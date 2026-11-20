@@ -11,6 +11,7 @@ import android.text.InputType;
 import android.text.format.DateUtils;
 import android.text.format.Formatter;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -89,6 +90,7 @@ public final class SettingsActivity extends BaseActivity {
         setUpBuffer();
         setUpCache();
         setUpDownloadNext();
+        setUpFrameGen();
         setUpSource();
 
         findViewById(R.id.github_button).setOnClickListener(v -> openRepository());
@@ -536,6 +538,73 @@ public final class SettingsActivity extends BaseActivity {
         long clamped = Math.max(Settings.CACHE_MIN_BYTES,
                 Math.min(Settings.CACHE_MAX_BYTES, bytes));
         return (int) ((clamped - Settings.CACHE_MIN_BYTES) * CACHE_STEPS / span);
+    }
+
+    private void setUpFrameGen() {
+        SwitchCompat frameGenSwitch = findViewById(R.id.frame_gen_switch);
+        View fpsRow = findViewById(R.id.frame_gen_fps_row);
+        TextView fpsValue = findViewById(R.id.frame_gen_fps_value);
+        boolean enabled = Settings.frameGenEnabled(this);
+        fpsRow.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        fpsValue.setText(getString(R.string.settings_frame_gen_fps_value,
+                Settings.frameGenTargetFps(this)));
+        frameGenSwitch.setChecked(enabled);
+        frameGenSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                confirmFrameGenEnable(frameGenSwitch, fpsRow);
+            } else {
+                applyFrameGenEnabled(false, fpsRow);
+            }
+        });
+        fpsRow.setOnClickListener(v -> pickFrameGenFps(fpsValue));
+    }
+
+    private void confirmFrameGenEnable(SwitchCompat frameGenSwitch, View fpsRow) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_frame_gen_warning_title)
+                .setMessage(R.string.settings_frame_gen_warning_message)
+                .setPositiveButton(R.string.settings_frame_gen_warning_confirm,
+                        (dialog, which) -> applyFrameGenEnabled(true, fpsRow))
+                .setNegativeButton(android.R.string.cancel,
+                        (dialog, which) -> frameGenSwitch.setChecked(false))
+                .setOnCancelListener(dialog -> frameGenSwitch.setChecked(false))
+                .show();
+    }
+
+    private void applyFrameGenEnabled(boolean enabled, View fpsRow) {
+        Settings.setFrameGenEnabled(this, enabled);
+        fpsRow.setVisibility(enabled ? View.VISIBLE : View.GONE);
+    }
+
+    private void pickFrameGenFps(TextView fpsValue) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_frame_gen_fps)
+                .setItems(new CharSequence[]{
+                        getString(R.string.settings_frame_gen_fps_60),
+                        getString(R.string.settings_frame_gen_fps_120)
+                }, (dialog, which) -> {
+                    if (which == 0) {
+                        applyFrameGenFps(fpsValue, 60);
+                    } else {
+                        confirmFrameGenFps120(fpsValue);
+                    }
+                })
+                .show();
+    }
+
+    private void confirmFrameGenFps120(TextView fpsValue) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_frame_gen_fps_120_title)
+                .setMessage(R.string.settings_frame_gen_fps_120_message)
+                .setPositiveButton(R.string.settings_frame_gen_fps_120_confirm,
+                        (dialog, which) -> applyFrameGenFps(fpsValue, 120))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void applyFrameGenFps(TextView fpsValue, int fps) {
+        Settings.setFrameGenTargetFps(this, fps);
+        fpsValue.setText(getString(R.string.settings_frame_gen_fps_value, fps));
     }
 
     private void setUpDownloadNext() {

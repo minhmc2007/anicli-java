@@ -51,6 +51,20 @@ teal, green, red, and orange, plus Light, Dark, and System themes.
 The player adjusts brightness through its own window and volume through the
 player instance. Neither changes a system-wide setting or asks for a permission.
 
+## Frame generation
+
+Settings → Playback → Frame generation synthesises frames on the GPU to raise
+24 fps video to 60 or 120 fps. It is a small per-pixel motion warp, not DLSS:
+no neural network, no invented detail, no real-time RIFE. Phones cannot run RIFE
+at 1080p, so this is the option that fits the hardware.
+
+It looks good on slow, calm material — dialogue, romance, slice of life,
+scenery pans. It cannot invent what it cannot see: a character moving against a
+panning background, fast combat, or a cut inside a frame pair will show warping,
+ghosting, or a brief step. 120 fps exposes roughly twice as much of that as 60,
+and adds a source frame of latency. Do not turn it on for an action episode and
+expect a new GPU.
+
 ## How it works
 
 1. Trending cards are parsed from the HiAnime home page.
@@ -111,7 +125,7 @@ The app version lives in
 [`Version.java`](app/src/main/java/com/minhmc2077/aniclijava/Version.java):
 
 ```java
-public static final String NAME = "0.0.4";
+public static final String NAME = "0.0.9";
 ```
 
 Gradle reads this value for the APK `versionName`, so the Java constant is the

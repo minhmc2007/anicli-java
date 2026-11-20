@@ -7,13 +7,28 @@
     android:layout_height="match_parent"
     android:background="@color/player_background">
 
+    <androidx.media3.ui.AspectRatioFrameLayout
+        android:id="@+id/frame_gen_frame"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        app:resize_mode="fit">
+
+        <SurfaceView
+            android:id="@+id/frame_gen_surface"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </androidx.media3.ui.AspectRatioFrameLayout>
+
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/player_background"
+        android:background="@android:color/transparent"
         app:resize_mode="fit"
+        app:shutter_background_color="@android:color/transparent"
         app:show_buffering="always"
+        app:surface_type="none"
         app:use_controller="true" />
 
     <LinearLayout
