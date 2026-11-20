@@ -11,6 +11,7 @@ import android.text.InputType;
 import android.text.format.DateUtils;
 import android.text.format.Formatter;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -541,9 +542,48 @@ public final class SettingsActivity extends BaseActivity {
 
     private void setUpFrameGen() {
         SwitchCompat frameGenSwitch = findViewById(R.id.frame_gen_switch);
+        View fpsRow = findViewById(R.id.frame_gen_fps_row);
+        TextView fpsValue = findViewById(R.id.frame_gen_fps_value);
+        fpsRow.setVisibility(Settings.frameGenEnabled(this) ? View.VISIBLE : View.GONE);
+        fpsValue.setText(getString(R.string.settings_frame_gen_fps_value,
+                Settings.frameGenTargetFps(this)));
         frameGenSwitch.setChecked(Settings.frameGenEnabled(this));
-        frameGenSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
-                Settings.setFrameGenEnabled(this, isChecked));
+        frameGenSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            Settings.setFrameGenEnabled(this, isChecked);
+            fpsRow.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+        });
+        fpsRow.setOnClickListener(v -> pickFrameGenFps(fpsValue));
+    }
+
+    private void pickFrameGenFps(TextView fpsValue) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_frame_gen_fps)
+                .setItems(new CharSequence[]{
+                        getString(R.string.settings_frame_gen_fps_60),
+                        getString(R.string.settings_frame_gen_fps_120)
+                }, (dialog, which) -> {
+                    if (which == 0) {
+                        applyFrameGenFps(fpsValue, 60);
+                    } else {
+                        confirmFrameGenFps120(fpsValue);
+                    }
+                })
+                .show();
+    }
+
+    private void confirmFrameGenFps120(TextView fpsValue) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_frame_gen_fps_120_title)
+                .setMessage(R.string.settings_frame_gen_fps_120_message)
+                .setPositiveButton(R.string.settings_frame_gen_fps_120_confirm,
+                        (dialog, which) -> applyFrameGenFps(fpsValue, 120))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void applyFrameGenFps(TextView fpsValue, int fps) {
+        Settings.setFrameGenTargetFps(this, fps);
+        fpsValue.setText(getString(R.string.settings_frame_gen_fps_value, fps));
     }
 
     private void setUpDownloadNext() {

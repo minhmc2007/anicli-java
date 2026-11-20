@@ -290,6 +290,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private boolean newFrame;
     private boolean drawEveryVsync;
     private boolean paused;
+    private int targetFps = 60;
+    private long nextDrawNs;
 
     private static final int RING = 2;
     private static final int SEARCH_RANGE = 24;
@@ -391,6 +393,10 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
 
     public void setPaused(boolean value) {
         handler.post(() -> paused = value);
+    }
+
+    public void setTargetFps(int fps) {
+        handler.post(() -> targetFps = fps >= 120 ? 120 : 60);
     }
 
     public Stats stats() {
@@ -1036,13 +1042,35 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             return;
         }
         vsyncs++;
-        if (eglWindow != EGL14.EGL_NO_SURFACE && hasFrame && !paused
-                && (drawEveryVsync || newFrame)) {
-            newFrame = false;
-            draw(frameTimeNanos);
+        if (eglWindow != EGL14.EGL_NO_SURFACE && hasFrame && !paused) {
+            boolean render;
+            if (drawEveryVsync) {
+                render = due(frameTimeNanos);
+            } else {
+                render = newFrame;
+            }
+            if (render) {
+                newFrame = false;
+                draw(frameTimeNanos);
+            }
         }
         updateStats(frameTimeNanos);
         choreographer.postFrameCallback(this);
+    }
+
+    private boolean due(long frameTimeNanos) {
+        if (nextDrawNs == 0 || frameTimeNanos - nextDrawNs > 1_000_000_000L) {
+            nextDrawNs = frameTimeNanos;
+        }
+        long interval = 1_000_000_000L / targetFps;
+        if (frameTimeNanos + 1_000_000L < nextDrawNs) {
+            return false;
+        }
+        nextDrawNs += interval;
+        if (nextDrawNs < frameTimeNanos) {
+            nextDrawNs = frameTimeNanos + interval;
+        }
+        return true;
     }
 
     private void draw(long frameTimeNanos) {

@@ -19,6 +19,9 @@ public final class Settings {
     private static final String KEY_UPDATE_CHECK = "update_check";
     private static final String KEY_ANIME_SOURCE = "anime_source";
     private static final String KEY_FRAME_GEN = "frame_gen";
+    private static final String KEY_FRAME_GEN_FPS = "frame_gen_fps";
+
+    public static final int FRAME_GEN_FPS_DEFAULT = 60;
 
     public static final int SKIP_OFF = 0;
     public static final int SKIP_ON_TIME = 1;
@@ -145,6 +148,14 @@ public final class Settings {
 
     public static void setFrameGenEnabled(Context context, boolean enabled) {
         prefs(context).edit().putBoolean(KEY_FRAME_GEN, enabled).apply();
+    }
+
+    public static int frameGenTargetFps(Context context) {
+        return prefs(context).getInt(KEY_FRAME_GEN_FPS, FRAME_GEN_FPS_DEFAULT) == 120 ? 120 : 60;
+    }
+
+    public static void setFrameGenTargetFps(Context context, int fps) {
+        prefs(context).edit().putInt(KEY_FRAME_GEN_FPS, fps == 120 ? 120 : 60).apply();
     }
 
     public static String animeSource(Context context) {

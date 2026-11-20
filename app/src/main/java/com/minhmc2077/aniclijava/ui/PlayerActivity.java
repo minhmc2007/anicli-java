@@ -440,6 +440,7 @@ public final class PlayerActivity extends BaseActivity {
             }
         });
         boolean enabled = com.minhmc2077.aniclijava.util.Settings.frameGenEnabled(this);
+        frameGen.setTargetFps(com.minhmc2077.aniclijava.util.Settings.frameGenTargetFps(this));
         frameGen.setProcessingEnabled(enabled);
         frameGen.start();
         if (enabled) {
@@ -1422,6 +1423,7 @@ public final class PlayerActivity extends BaseActivity {
     protected void onResume() {
         super.onResume();
         if (frameGen != null) {
+            frameGen.setTargetFps(com.minhmc2077.aniclijava.util.Settings.frameGenTargetFps(this));
             frameGen.setPaused(false);
         }
         if (frameGenStats != null && frameGenStats.getVisibility() == View.VISIBLE) {

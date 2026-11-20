@@ -150,7 +150,14 @@
     <string name="settings_cache_limit">Cache limit</string>
     <string name="settings_cache_view">View cached data</string>
     <string name="settings_frame_gen">Frame generation (experimental)</string>
-    <string name="settings_frame_gen_hint">Custom GPU video path. This build only verifies frame pacing.</string>
+    <string name="settings_frame_gen_hint">Interpolates between decoded frames through the app\'s own GPU path. Costs some battery and adds one frame of latency.</string>
+    <string name="settings_frame_gen_fps">Target frame rate</string>
+    <string name="settings_frame_gen_fps_value">%1$d fps</string>
+    <string name="settings_frame_gen_fps_60">60 fps</string>
+    <string name="settings_frame_gen_fps_120">120 fps</string>
+    <string name="settings_frame_gen_fps_120_title">120 fps can look worse</string>
+    <string name="settings_frame_gen_fps_120_message">At 120 fps four of every five frames are synthesised, so a bad motion estimate shows up far more often than at 60 fps — expect ghosting and warping when a character moves against a panning background. GPU work roughly doubles. It also needs a 120 Hz screen; on a 60 Hz display this behaves the same as 60 fps.</string>
+    <string name="settings_frame_gen_fps_120_confirm">Use 120 fps</string>
     <string name="settings_download_next">Download next episode</string>
     <string name="settings_download_next_hint">While an episode plays, the next one is prefetched up to the buffer-ahead size. With Whole episode it is downloaded fully. The four newest downloads are kept.</string>
 
