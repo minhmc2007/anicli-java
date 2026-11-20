@@ -426,7 +426,7 @@ public final class PlayerActivity extends BaseActivity {
             @Override
             public void onFailure(@NonNull String reason) {
                 Log.w("PlayerActivity", "frame gen: " + reason);
-                handler.post(PlayerActivity.this::playDirect);
+                playDirect();
             }
         });
         frameGen.setTargetFps(com.minhmc2077.aniclijava.util.Settings.frameGenTargetFps(this));
