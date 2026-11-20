@@ -247,13 +247,13 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "    float dis = abs(dot(a - b, vec3(0.299, 0.587, 0.114)));\n"
             + "    float occ = smoothstep(uDis.x, uDis.y, dis) * uDisW;\n"
             + "    fragColor = vec4(mix(warped, nearest, max(bad, occ)), 1.0);\n"
-            + "}\n"
+            + "}\n";
 
     private static final String COPY_FRAGMENT_SHADER = GLSL_HEADER
             + "uniform sampler2D uTex;\n"
             + "void main() {\n"
             + "    fragColor = vec4(texture(uTex, vTexCoord).rgb, 1.0);\n"
-            + "}\n"
+            + "}\n";
 
     private static final String TILE_SEARCH_FRAGMENT_SHADER = GLSL_HEADER
             + FLOW_DECODE_GLSL
@@ -337,7 +337,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "    vec2 e = clamp((at + frac + 192.0) * (255.0 / 384.0), 0.0, 255.0);\n"
             + "    fragColor = vec4(floor(e.x) / 255.0, fract(e.x),\n"
             + "                     floor(e.y) / 255.0, fract(e.y));\n"
-            + "}\n"
+            + "}\n";
 
     private static final String PIXEL_FLOW_FRAGMENT_SHADER = GLSL_HEADER
             + FLOW_DECODE_GLSL
@@ -410,7 +410,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "    vec2 e = clamp((v + frac + 192.0) * (255.0 / 384.0), 0.0, 255.0);\n"
             + "    fragColor = vec4(floor(e.x) / 255.0, fract(e.x),\n"
             + "                     floor(e.y) / 255.0, fract(e.y));\n"
-            + "}\n"
+            + "}\n";
 
     private static final String PIXEL_SAD_FRAGMENT_SHADER = GLSL_HEADER
             + FLOW_DECODE_GLSL
@@ -430,7 +430,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "        }\n"
             + "    }\n"
             + "    fragColor = vec4(sad / 25.0, 1.0, 1.0, 1.0);\n"
-            + "}\n"
+            + "}\n";
 
     private static final float[] QUAD = {-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f};
     private static final float[] TEX_COORDS = {0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f};
