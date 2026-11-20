@@ -104,7 +104,6 @@ public final class PlayerActivity extends BaseActivity {
     private SurfaceView frameGenSurface;
     private TextView frameGenStats;
     private FrameGenController frameGen;
-    private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable frameGenStatsPoll = new Runnable() {
         @Override
         public void run() {
