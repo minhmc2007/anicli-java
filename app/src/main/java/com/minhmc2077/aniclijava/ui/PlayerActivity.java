@@ -113,7 +113,7 @@ public final class PlayerActivity extends BaseActivity {
             FrameGenController.Stats stats = frameGen.stats();
             frameGenStats.setText(getString(R.string.player_fg_stats,
                     stats.sourceFps, stats.outputFps, stats.width, stats.height,
-                    stats.frameMs));
+                    stats.frameMs, stats.warpPct));
             handler.postDelayed(this, 1000L);
         }
     };

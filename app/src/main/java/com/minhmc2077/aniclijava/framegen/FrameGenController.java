@@ -42,6 +42,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         public volatile int width;
         public volatile int height;
         public volatile float frameMs;
+        public volatile int warpPct;
         public volatile long sourceFrames;
     }
 
@@ -131,12 +132,15 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
 
     private static final String REDUCE_FRAGMENT_SHADER = GLSL_HEADER
             + "uniform sampler2D uSearch;\n"
+            + "uniform float uIn;\n"
             + "void main() {\n"
+            + "    vec2 cell = floor(vTexCoord * uIn / 7.0);\n"
             + "    float best = 2.0;\n"
             + "    vec2 bestShift = vec2(0.5);\n"
-            + "    for (int y = 0; y < 49; ++y) {\n"
-            + "        for (int x = 0; x < 49; ++x) {\n"
-            + "            vec4 s = texture(uSearch, (vec2(float(x), float(y)) + 0.5) / 49.0);\n"
+            + "    for (int y = 0; y < 7; ++y) {\n"
+            + "        for (int x = 0; x < 7; ++x) {\n"
+            + "            vec2 p = cell + vec2(float(x), float(y)) + 0.5;\n"
+            + "            vec4 s = texture(uSearch, p / uIn);\n"
             + "            if (s.b < best) {\n"
             + "                best = s.b;\n"
             + "                bestShift = s.xy;\n"
@@ -217,6 +221,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int searchNextHandle;
     private int searchStepHandle;
     private int reduceSearchHandle;
+    private int reduceInputHandle;
     private int warpPrevHandle;
     private int warpNextHandle;
     private int warpFlowHandle;
@@ -224,6 +229,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int warpStepHandle;
     private final int[] lumaTexture = new int[RING];
     private int searchTexture;
+    private int flowMidTexture;
     private int flowTexture;
     private int lumaWidth;
     private int lumaHeight;
@@ -247,10 +253,12 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private long lastPtsNs;
 
     private long draws;
+    private long warped;
     private long vsyncs;
     private long sourceCount;
     private long lastStatsNs;
     private long lastDraws;
+    private long lastWarped;
     private long lastVsyncs;
     private long lastSource;
 
@@ -454,6 +462,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         searchNextHandle = uniform(searchProgram, "uNext");
         searchStepHandle = uniform(searchProgram, "uStep");
         reduceSearchHandle = uniform(reduceProgram, "uSearch");
+        reduceInputHandle = uniform(reduceProgram, "uIn");
         warpPrevHandle = uniform(warpProgram, "uPrev");
         warpNextHandle = uniform(warpProgram, "uNext");
         warpFlowHandle = uniform(warpProgram, "uFlow");
@@ -572,6 +581,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteTextures(RING, frameTexture, 0);
             GLES20.glDeleteTextures(RING, lumaTexture, 0);
             GLES20.glDeleteTextures(1, new int[]{searchTexture}, 0);
+            GLES20.glDeleteTextures(1, new int[]{flowMidTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
         }
         if (frameFbo[0] != 0) {
@@ -615,7 +625,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         if (pts > 0) {
             trackClock(pts);
         }
-        if (drawEveryVsync && videoWidth > 0 && videoHeight > 0) {
+        if (drawEveryVsync && pts > 0 && videoWidth > 0 && videoHeight > 0) {
             writeIndex = (writeIndex + 1) % RING;
             copyToFrame(writeIndex);
             framePts[writeIndex] = pts;
@@ -691,13 +701,22 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glUniform2f(searchStepHandle, 1f / lumaWidth, 1f / lumaHeight);
         drawFullQuad();
 
+        GLES20.glUseProgram(reduceProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glUniform1i(reduceSearchHandle, 0);
+
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, flowMidTexture, 0);
+        GLES20.glViewport(0, 0, 7, 7);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, searchTexture);
+        GLES20.glUniform1f(reduceInputHandle, SEARCH_SIZE);
+        drawFullQuad();
+
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
                 GLES20.GL_TEXTURE_2D, flowTexture, 0);
         GLES20.glViewport(0, 0, 1, 1);
-        GLES20.glUseProgram(reduceProgram);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, searchTexture);
-        GLES20.glUniform1i(reduceSearchHandle, 0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, flowMidTexture);
+        GLES20.glUniform1f(reduceInputHandle, 7f);
         drawFullQuad();
 
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
@@ -728,6 +747,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteTextures(RING, frameTexture, 0);
             GLES20.glDeleteTextures(RING, lumaTexture, 0);
             GLES20.glDeleteTextures(1, new int[]{searchTexture}, 0);
+            GLES20.glDeleteTextures(1, new int[]{flowMidTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
         }
         videoWidth = width;
@@ -760,6 +780,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         searchTexture = generated[0];
         bindSimpleTexture(searchTexture);
         GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, SEARCH_SIZE, SEARCH_SIZE,
+                0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        GLES20.glGenTextures(1, generated, 0);
+        flowMidTexture = generated[0];
+        bindSimpleTexture(flowMidTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 7, 7,
                 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
         GLES20.glGenTextures(1, generated, 0);
         flowTexture = generated[0];
@@ -842,6 +867,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                     float timestep = (contentNs - framePts[before]) / (float) span;
                     timestep = Math.max(0f, Math.min(1f, timestep));
                     drawWarp(before, after, timestep);
+                    warped++;
                     drawn = true;
                 }
             }
@@ -920,6 +946,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         if (lastStatsNs == 0) {
             lastStatsNs = frameTimeNanos;
             lastDraws = draws;
+            lastWarped = warped;
             lastVsyncs = vsyncs;
             lastSource = sourceCount;
             return;
@@ -932,9 +959,13 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         stats.outputFps = (int) Math.round((draws - lastDraws) / seconds);
         stats.vsyncFps = (int) Math.round((vsyncs - lastVsyncs) / seconds);
         stats.sourceFps = (int) Math.round((sourceCount - lastSource) / seconds);
+        long drawnDelta = draws - lastDraws;
+        stats.warpPct = drawnDelta > 0
+                ? (int) Math.round(100d * (warped - lastWarped) / drawnDelta) : 0;
         stats.sourceFrames = sourceCount;
         lastStatsNs = frameTimeNanos;
         lastDraws = draws;
+        lastWarped = warped;
         lastVsyncs = vsyncs;
         lastSource = sourceCount;
     }
