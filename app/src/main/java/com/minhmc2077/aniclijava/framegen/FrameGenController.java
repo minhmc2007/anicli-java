@@ -116,20 +116,26 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private static final String SEARCH_FRAGMENT_SHADER = GLSL_HEADER
             + "uniform sampler2D uPrev;\n"
             + "uniform sampler2D uNext;\n"
+            + "uniform sampler2D uPick;\n"
             + "uniform vec2 uStep;\n"
+            + "uniform float uPickRange;\n"
+            + "uniform float uStride;\n"
+            + "uniform float uInset;\n"
             + "void main() {\n"
             + "    vec2 idx = floor(vTexCoord * 49.0);\n"
-            + "    vec2 shift = idx - 24.0;\n"
+            + "    vec2 center = (texture(uPick, vec2(0.5)).rg * 2.0 - 1.0) * uPickRange;\n"
+            + "    vec2 shift = center + (idx - 24.0) * uStride;\n"
             + "    float sad = 0.0;\n"
             + "    for (int y = 0; y < 9; ++y) {\n"
             + "        for (int x = 0; x < 16; ++x) {\n"
-            + "            vec2 uv = 0.12 + 0.76 * (vec2(float(x), float(y)) + 0.5) / vec2(16.0, 9.0);\n"
+            + "            vec2 uv = uInset + (1.0 - 2.0 * uInset)\n"
+            + "                    * (vec2(float(x), float(y)) + 0.5) / vec2(16.0, 9.0);\n"
             + "            sad += abs(texture(uPrev, uv).r - texture(uNext, uv + shift * uStep).r);\n"
             + "        }\n"
             + "    }\n"
             + "    float packed = sad * (255.0 / 144.0);\n"
             + "    float coarse = floor(packed);\n"
-            + "    fragColor = vec4((shift + 24.0) / 48.0, coarse / 255.0, packed - coarse);\n"
+            + "    fragColor = vec4((idx + 0.5) / 49.0, coarse / 255.0, packed - coarse);\n"
             + "}\n";
 
     private static final String BLOCK_FRAGMENT_SHADER = GLSL_HEADER
@@ -137,23 +143,45 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "void main() {\n"
             + "    vec2 cell = floor(vTexCoord * 7.0) * 7.0;\n"
             + "    float best = 2.0;\n"
-            + "    vec2 bestShift = vec2(0.5);\n"
+            + "    vec2 bestCell = vec2(24.0);\n"
             + "    for (int y = 0; y < 7; ++y) {\n"
             + "        for (int x = 0; x < 7; ++x) {\n"
-            + "            vec2 p = (cell + vec2(float(x), float(y)) + 0.5) / 49.0;\n"
-            + "            vec4 s = texture(uSearch, p);\n"
+            + "            vec4 s = texture(uSearch, (cell + vec2(float(x), float(y)) + 0.5) / 49.0);\n"
             + "            if (s.b < best) {\n"
             + "                best = s.b;\n"
-            + "                bestShift = s.xy;\n"
+            + "                bestCell = floor(s.rg * 49.0);\n"
             + "            }\n"
             + "        }\n"
             + "    }\n"
-            + "    fragColor = vec4(bestShift, best, 1.0);\n"
+            + "    fragColor = vec4((bestCell + 0.5) / 49.0, best, 1.0);\n"
+            + "}\n";
+
+    private static final String PICK_FRAGMENT_SHADER = GLSL_HEADER
+            + "uniform sampler2D uBlocks;\n"
+            + "uniform float uStride;\n"
+            + "uniform float uRange;\n"
+            + "void main() {\n"
+            + "    float best = 2.0;\n"
+            + "    vec2 bestCell = vec2(24.0);\n"
+            + "    for (int y = 0; y < 7; ++y) {\n"
+            + "        for (int x = 0; x < 7; ++x) {\n"
+            + "            vec4 b = texture(uBlocks, (vec2(float(x), float(y)) + 0.5) / 7.0);\n"
+            + "            if (b.b < best) {\n"
+            + "                best = b.b;\n"
+            + "                bestCell = floor(b.rg * 49.0);\n"
+            + "            }\n"
+            + "        }\n"
+            + "    }\n"
+            + "    vec2 shift = (bestCell - 24.0) * uStride;\n"
+            + "    fragColor = vec4((shift + uRange) / (2.0 * uRange), best, 1.0);\n"
             + "}\n";
 
     private static final String REFINE_FRAGMENT_SHADER = GLSL_HEADER
             + "uniform sampler2D uSearch;\n"
             + "uniform sampler2D uBlocks;\n"
+            + "uniform sampler2D uPick;\n"
+            + "uniform float uPickRange;\n"
+            + "uniform float uStride;\n"
             + "float sad(vec2 cell) {\n"
             + "    vec4 t = texture(uSearch, (cell + 0.5) / 49.0);\n"
             + "    return floor(t.b * 255.0 + 0.5) + t.a;\n"
@@ -166,7 +194,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "            vec4 b = texture(uBlocks, (vec2(float(x), float(y)) + 0.5) / 7.0);\n"
             + "            if (b.b < best) {\n"
             + "                best = b.b;\n"
-            + "                bestCell = floor(b.xy * 48.0 + 0.5);\n"
+            + "                bestCell = floor(b.rg * 49.0);\n"
             + "            }\n"
             + "        }\n"
             + "    }\n"
@@ -179,8 +207,9 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "    float ay = u - 2.0 * c0 + d;\n"
             + "    vec2 frac = vec2(ax > 1e-5 ? clamp(0.5 * (l - r) / ax, -0.5, 0.5) : 0.0,\n"
             + "                     ay > 1e-5 ? clamp(0.5 * (u - d) / ay, -0.5, 0.5) : 0.0);\n"
-            + "    vec2 shift = bestCell + frac - 24.0;\n"
-            + "    vec2 e = (shift + 32.0) * 4.0;\n"
+            + "    vec2 center = (texture(uPick, vec2(0.5)).rg * 2.0 - 1.0) * uPickRange;\n"
+            + "    vec2 shift = center + (bestCell - 24.0 + frac) * uStride;\n"
+            + "    vec2 e = (shift + 96.0) * (255.0 / 192.0);\n"
             + "    fragColor = vec4(floor(e.x) / 255.0, e.x - floor(e.x),\n"
             + "                     floor(e.y) / 255.0, e.y - floor(e.y));\n"
             + "}\n";
@@ -188,14 +217,19 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private static final String SAD_FRAGMENT_SHADER = GLSL_HEADER
             + "uniform sampler2D uBlocks;\n"
             + "void main() {\n"
-            + "    float best = 1.0;\n"
+            + "    float best = 2.0;\n"
+            + "    vec2 bestCell = vec2(24.0);\n"
             + "    for (int y = 0; y < 7; ++y) {\n"
             + "        for (int x = 0; x < 7; ++x) {\n"
-            + "            vec2 p = (vec2(float(x), float(y)) + 0.5) / 7.0;\n"
-            + "            best = min(best, texture(uBlocks, p).b);\n"
+            + "            vec4 b = texture(uBlocks, (vec2(float(x), float(y)) + 0.5) / 7.0);\n"
+            + "            if (b.b < best) {\n"
+            + "                best = b.b;\n"
+            + "                bestCell = floor(b.rg * 49.0);\n"
+            + "            }\n"
             + "        }\n"
             + "    }\n"
-            + "    fragColor = vec4(best, 0.0, 0.0, 1.0);\n"
+            + "    bool edge = any(equal(bestCell, vec2(0.0))) || any(equal(bestCell, vec2(48.0)));\n"
+            + "    fragColor = vec4(edge ? 1.0 : best, 0.0, 0.0, 1.0);\n"
             + "}\n";
 
     private static final String WARP_FRAGMENT_SHADER = GLSL_HEADER
@@ -207,8 +241,9 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "uniform vec2 uStep;\n"
             + "void main() {\n"
             + "    vec4 flow = texture(uFlow, vec2(0.5));\n"
-            + "    vec2 lumaShift = vec2(flow.r * 255.0 + flow.g, flow.b * 255.0 + flow.a) / 4.0 - 32.0;\n"
-            + "    vec2 shift = lumaShift * 4.0 * uStep;\n"
+            + "    vec2 packed = vec2(floor(flow.r * 255.0 + 0.5) + flow.g,\n"
+            + "                       floor(flow.b * 255.0 + 0.5) + flow.a);\n"
+            + "    vec2 shift = (packed * (192.0 / 255.0) - 96.0) * 4.0 * uStep;\n"
             + "    vec3 warped = mix(texture(uPrev, vTexCoord - shift * uTimestep).rgb,\n"
             + "                      texture(uNext, vTexCoord + shift * (1.0 - uTimestep)).rgb,\n"
             + "                      uTimestep);\n"
@@ -260,10 +295,18 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private static final int SEARCH_RANGE = 24;
     private static final int SEARCH_SIZE = SEARCH_RANGE * 2 + 1;
     private static final int MOTION_SCALE = 4;
+    // Coarse pass spans +-48 luma px (2 luma px steps), fine pass recentres on it and
+    // resolves 0.5 luma px before the parabola. Total reach +-60 luma px = +-240 full px.
+    private static final float COARSE_STRIDE = 2f;
+    private static final float COARSE_RANGE = SEARCH_RANGE * COARSE_STRIDE;
+    private static final float COARSE_INSET = 0.20f;
+    private static final float FINE_STRIDE = 0.5f;
+    private static final float FINE_INSET = 0.24f;
 
     private int lumaProgram;
     private int searchProgram;
     private int blockProgram;
+    private int pickProgram;
     private int refineProgram;
     private int sadProgram;
     private int warpProgram;
@@ -271,10 +314,20 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int lumaTexelHandle;
     private int searchPrevHandle;
     private int searchNextHandle;
+    private int searchPickHandle;
+    private int searchPickRangeHandle;
+    private int searchStrideHandle;
+    private int searchInsetHandle;
     private int searchStepHandle;
     private int blockSearchHandle;
+    private int pickBlocksHandle;
+    private int pickStrideHandle;
+    private int pickRangeHandle;
     private int refineSearchHandle;
     private int refineBlocksHandle;
+    private int refinePickHandle;
+    private int refinePickRangeHandle;
+    private int refineStrideHandle;
     private int sadBlocksHandle;
     private int warpPrevHandle;
     private int warpNextHandle;
@@ -285,6 +338,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private final int[] lumaTexture = new int[RING];
     private int searchTexture;
     private int blockTexture;
+    private int pickTexture;
     private int flowTexture;
     private int flowSadTexture;
     private int lumaWidth;
@@ -508,21 +562,33 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         lumaProgram = linkProgram(GLSL_VERTEX_SHADER, LUMA_FRAGMENT_SHADER);
         searchProgram = linkProgram(GLSL_VERTEX_SHADER, SEARCH_FRAGMENT_SHADER);
         blockProgram = linkProgram(GLSL_VERTEX_SHADER, BLOCK_FRAGMENT_SHADER);
+        pickProgram = linkProgram(GLSL_VERTEX_SHADER, PICK_FRAGMENT_SHADER);
         refineProgram = linkProgram(GLSL_VERTEX_SHADER, REFINE_FRAGMENT_SHADER);
         sadProgram = linkProgram(GLSL_VERTEX_SHADER, SAD_FRAGMENT_SHADER);
         warpProgram = linkProgram(GLSL_VERTEX_SHADER, WARP_FRAGMENT_SHADER);
         if (lumaProgram == 0 || searchProgram == 0 || blockProgram == 0
-                || refineProgram == 0 || sadProgram == 0 || warpProgram == 0) {
+                || pickProgram == 0 || refineProgram == 0 || sadProgram == 0
+                || warpProgram == 0) {
             return false;
         }
         lumaSourceHandle = uniform(lumaProgram, "uSource");
         lumaTexelHandle = uniform(lumaProgram, "uTexel");
         searchPrevHandle = uniform(searchProgram, "uPrev");
         searchNextHandle = uniform(searchProgram, "uNext");
+        searchPickHandle = uniform(searchProgram, "uPick");
+        searchPickRangeHandle = uniform(searchProgram, "uPickRange");
+        searchStrideHandle = uniform(searchProgram, "uStride");
+        searchInsetHandle = uniform(searchProgram, "uInset");
         searchStepHandle = uniform(searchProgram, "uStep");
         blockSearchHandle = uniform(blockProgram, "uSearch");
+        pickBlocksHandle = uniform(pickProgram, "uBlocks");
+        pickStrideHandle = uniform(pickProgram, "uStride");
+        pickRangeHandle = uniform(pickProgram, "uRange");
         refineSearchHandle = uniform(refineProgram, "uSearch");
         refineBlocksHandle = uniform(refineProgram, "uBlocks");
+        refinePickHandle = uniform(refineProgram, "uPick");
+        refinePickRangeHandle = uniform(refineProgram, "uPickRange");
+        refineStrideHandle = uniform(refineProgram, "uStride");
         sadBlocksHandle = uniform(sadProgram, "uBlocks");
         warpPrevHandle = uniform(warpProgram, "uPrev");
         warpNextHandle = uniform(warpProgram, "uNext");
@@ -629,8 +695,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteProgram(simpleProgram);
             simpleProgram = 0;
         }
-        int[] programs = {lumaProgram, searchProgram, blockProgram, refineProgram, sadProgram,
-                warpProgram};
+        int[] programs = {lumaProgram, searchProgram, blockProgram, pickProgram, refineProgram,
+                sadProgram, warpProgram};
         for (int id : programs) {
             if (id != 0) {
                 GLES20.glDeleteProgram(id);
@@ -639,6 +705,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         lumaProgram = 0;
         searchProgram = 0;
         blockProgram = 0;
+        pickProgram = 0;
         refineProgram = 0;
         sadProgram = 0;
         warpProgram = 0;
@@ -647,6 +714,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteTextures(RING, lumaTexture, 0);
             GLES20.glDeleteTextures(1, new int[]{searchTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{blockTexture}, 0);
+            GLES20.glDeleteTextures(1, new int[]{pickTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowSadTexture}, 0);
         }
@@ -753,10 +821,24 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     }
 
     private void estimateMotion(int prev, int next) {
+        renderSearch(prev, next, 0f, COARSE_STRIDE, COARSE_INSET);
+        renderBlocks();
+        renderPick(COARSE_STRIDE, COARSE_RANGE);
+        renderSearch(prev, next, COARSE_RANGE, FINE_STRIDE, FINE_INSET);
+        renderBlocks();
+        renderRefine(COARSE_RANGE, FINE_STRIDE);
+        renderSad();
+        flowPrev = prev;
+        flowNext = next;
+        flowValid = true;
+    }
+
+    private void renderSearch(int prev, int next, float pickRange, float stride, float inset) {
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
                 GLES20.GL_TEXTURE_2D, searchTexture, 0);
         GLES20.glViewport(0, 0, SEARCH_SIZE, SEARCH_SIZE);
+        unbindUnits();
         GLES20.glUseProgram(searchProgram);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[prev]);
@@ -764,43 +846,81 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[next]);
         GLES20.glUniform1i(searchNextHandle, 1);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pickTexture);
+        GLES20.glUniform1i(searchPickHandle, 2);
+        GLES20.glUniform1f(searchPickRangeHandle, pickRange);
+        GLES20.glUniform1f(searchStrideHandle, stride);
+        GLES20.glUniform1f(searchInsetHandle, inset);
         GLES20.glUniform2f(searchStepHandle, 1f / lumaWidth, 1f / lumaHeight);
         drawFullQuad();
+    }
 
-        GLES20.glUseProgram(blockProgram);
+    private void renderBlocks() {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
                 GLES20.GL_TEXTURE_2D, blockTexture, 0);
         GLES20.glViewport(0, 0, 7, 7);
+        unbindUnits();
+        GLES20.glUseProgram(blockProgram);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, searchTexture);
         GLES20.glUniform1i(blockSearchHandle, 0);
         drawFullQuad();
+    }
 
-        GLES20.glUseProgram(refineProgram);
+    private void renderPick(float stride, float range) {
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, pickTexture, 0);
+        GLES20.glViewport(0, 0, 1, 1);
+        unbindUnits();
+        GLES20.glUseProgram(pickProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, blockTexture);
+        GLES20.glUniform1i(pickBlocksHandle, 0);
+        GLES20.glUniform1f(pickStrideHandle, stride);
+        GLES20.glUniform1f(pickRangeHandle, range);
+        drawFullQuad();
+    }
+
+    private void renderRefine(float pickRange, float stride) {
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
                 GLES20.GL_TEXTURE_2D, flowTexture, 0);
         GLES20.glViewport(0, 0, 1, 1);
+        unbindUnits();
+        GLES20.glUseProgram(refineProgram);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, searchTexture);
         GLES20.glUniform1i(refineSearchHandle, 0);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, blockTexture);
         GLES20.glUniform1i(refineBlocksHandle, 1);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pickTexture);
+        GLES20.glUniform1i(refinePickHandle, 2);
+        GLES20.glUniform1f(refinePickRangeHandle, pickRange);
+        GLES20.glUniform1f(refineStrideHandle, stride);
         drawFullQuad();
+    }
 
-        GLES20.glUseProgram(sadProgram);
+    private void renderSad() {
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
                 GLES20.GL_TEXTURE_2D, flowSadTexture, 0);
         GLES20.glViewport(0, 0, 1, 1);
+        unbindUnits();
+        GLES20.glUseProgram(sadProgram);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, blockTexture);
         GLES20.glUniform1i(sadBlocksHandle, 0);
         drawFullQuad();
-
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-        flowPrev = prev;
-        flowNext = next;
-        flowValid = true;
+    }
+
+    private static void unbindUnits() {
+        for (int unit = 0; unit < 4; unit++) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + unit);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+        }
     }
 
     private void drawFullQuad() {
@@ -826,6 +946,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteTextures(RING, lumaTexture, 0);
             GLES20.glDeleteTextures(1, new int[]{searchTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{blockTexture}, 0);
+            GLES20.glDeleteTextures(1, new int[]{pickTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowSadTexture}, 0);
         }
@@ -864,6 +985,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         blockTexture = generated[0];
         bindSimpleTexture(blockTexture);
         GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 7, 7,
+                0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        GLES20.glGenTextures(1, generated, 0);
+        pickTexture = generated[0];
+        bindSimpleTexture(pickTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 1, 1,
                 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
         GLES20.glGenTextures(1, generated, 0);
         flowTexture = generated[0];
