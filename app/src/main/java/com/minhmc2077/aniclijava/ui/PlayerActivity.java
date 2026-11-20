@@ -102,21 +102,7 @@ public final class PlayerActivity extends BaseActivity {
     private ExoPlayer player;
     private AspectRatioFrameLayout frameGenFrame;
     private SurfaceView frameGenSurface;
-    private TextView frameGenStats;
     private FrameGenController frameGen;
-    private final Runnable frameGenStatsPoll = new Runnable() {
-        @Override
-        public void run() {
-            if (frameGen == null || frameGenStats == null) {
-                return;
-            }
-            FrameGenController.Stats stats = frameGen.stats();
-            frameGenStats.setText(getString(R.string.player_fg_stats,
-                    stats.sourceFps, stats.outputFps, stats.width, stats.height,
-                    stats.frameMs, stats.warpPct));
-            handler.postDelayed(this, 1000L);
-        }
-    };
     private CronetDataSource.Factory dataSourceFactory;
 
     private View topBar;
@@ -277,7 +263,6 @@ public final class PlayerActivity extends BaseActivity {
         levelIndicator = findViewById(R.id.level_indicator);
         frameGenFrame = findViewById(R.id.frame_gen_frame);
         frameGenSurface = findViewById(R.id.frame_gen_surface);
-        frameGenStats = findViewById(R.id.frame_gen_stats);
 
         Ui.applyTopInset(topBar);
         setUpGestures();
@@ -426,6 +411,10 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void startFrameGen() {
+        if (!com.minhmc2077.aniclijava.util.Settings.frameGenEnabled(this)) {
+            player.setVideoSurfaceView(frameGenSurface);
+            return;
+        }
         frameGen = new FrameGenController(frameGenSurface, new FrameGenController.Listener() {
             @Override
             public void onInputSurface(@NonNull Surface surface) {
@@ -437,16 +426,24 @@ public final class PlayerActivity extends BaseActivity {
             @Override
             public void onFailure(@NonNull String reason) {
                 Log.w("PlayerActivity", "frame gen: " + reason);
+                handler.post(PlayerActivity.this::playDirect);
             }
         });
-        boolean enabled = com.minhmc2077.aniclijava.util.Settings.frameGenEnabled(this);
         frameGen.setTargetFps(com.minhmc2077.aniclijava.util.Settings.frameGenTargetFps(this));
-        frameGen.setProcessingEnabled(enabled);
         frameGen.start();
-        if (enabled) {
-            frameGenStats.setVisibility(View.VISIBLE);
-            handler.post(frameGenStatsPoll);
+    }
+
+    /** Give the surface back to the player when the GPU path cannot present. */
+    private void playDirect() {
+        if (destroyed || player == null) {
+            return;
         }
+        if (frameGen != null) {
+            frameGen.release();
+            frameGen = null;
+        }
+        player.setVideoSurface(null);
+        player.setVideoSurfaceView(frameGenSurface);
     }
 
     private void loadEpisodes() {
@@ -1415,7 +1412,6 @@ public final class PlayerActivity extends BaseActivity {
         if (frameGen != null) {
             frameGen.setPaused(true);
         }
-        handler.removeCallbacks(frameGenStatsPoll);
         super.onPause();
     }
 
@@ -1425,9 +1421,6 @@ public final class PlayerActivity extends BaseActivity {
         if (frameGen != null) {
             frameGen.setTargetFps(com.minhmc2077.aniclijava.util.Settings.frameGenTargetFps(this));
             frameGen.setPaused(false);
-        }
-        if (frameGenStats != null && frameGenStats.getVisibility() == View.VISIBLE) {
-            handler.post(frameGenStatsPoll);
         }
     }
 

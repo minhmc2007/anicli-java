@@ -14,7 +14,6 @@ import android.opengl.Matrix;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.Choreographer;
 import android.view.Surface;
 import android.view.SurfaceHolder;
@@ -26,24 +25,18 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
-/** Video output surface and presentation clock. Stage 1: pass-through, one draw per vsync. */
+/**
+ * Owns the video SurfaceView: decodes into a two-frame ring, estimates a per-pixel
+ * motion field between the pair, and presents a warp at the display rate.
+ */
 public final class FrameGenController implements Choreographer.FrameCallback, SurfaceHolder.Callback {
     public interface Listener {
         void onInputSurface(@NonNull Surface surface);
 
         void onFailure(@NonNull String reason);
-    }
-
-    public static final class Stats {
-        public volatile int outputFps;
-        public volatile int sourceFps;
-        public volatile int vsyncFps;
-        public volatile int width;
-        public volatile int height;
-        public volatile float frameMs;
-        public volatile int warpPct;
-        public volatile long sourceFrames;
     }
 
     private static final String VERTEX_SHADER =
@@ -219,9 +212,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
 
     private static final String FLOW_DECODE_GLSL =
             "vec2 decodeFlow(vec4 e) {\n"
-                    + "    vec2 packed = vec2(floor(e.r * 255.0 + 0.5) + e.g,\n"
-                    + "                       floor(e.b * 255.0 + 0.5) + e.a);\n"
-                    + "    return packed * (384.0 / 255.0) - 192.0;\n"
+                    + "    return vec2(e.r * 255.0 + e.g, e.b * 255.0 + e.a)\n"
+                    + "            * (384.0 / 255.0) - 192.0;\n"
                     + "}\n";
 
     private static final String WARP_FRAGMENT_SHADER = GLSL_HEADER
@@ -252,7 +244,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private static final String COPY_FRAGMENT_SHADER = GLSL_HEADER
             + "uniform sampler2D uTex;\n"
             + "void main() {\n"
-            + "    fragColor = vec4(texture(uTex, vTexCoord).rgb, 1.0);\n"
+            + "    fragColor = texture(uTex, vTexCoord);\n"
             + "}\n";
 
     private static final String TILE_SEARCH_FRAGMENT_SHADER = GLSL_HEADER
@@ -437,7 +429,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
 
     private final SurfaceView view;
     private final Listener listener;
-    private final Stats stats = new Stats();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final HandlerThread thread;
     private final Handler handler;
@@ -467,7 +458,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private boolean released;
     private boolean hasFrame;
     private boolean newFrame;
-    private boolean drawEveryVsync;
     private boolean paused;
     private int targetFps = 60;
     private long nextDrawNs;
@@ -585,16 +575,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private long lastPtsNs;
     private long pairStartNs;
 
-    private long draws;
-    private long warped;
-    private long vsyncs;
-    private long sourceCount;
-    private long lastStatsNs;
-    private long lastDraws;
-    private long lastWarped;
-    private long lastVsyncs;
-    private long lastSource;
-
     public FrameGenController(@NonNull SurfaceView view, @NonNull Listener listener) {
         this.view = view;
         this.listener = listener;
@@ -608,10 +588,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         handler.post(this::initGl);
     }
 
-    public void setProcessingEnabled(boolean enabled) {
-        handler.post(() -> drawEveryVsync = enabled);
-    }
-
     public void setPaused(boolean value) {
         handler.post(() -> paused = value);
     }
@@ -620,20 +596,25 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         handler.post(() -> targetFps = fps >= 120 ? 120 : 60);
     }
 
-    public Stats stats() {
-        return stats;
-    }
-
     public void release() {
         view.getHolder().removeCallback(this);
-        handler.post(() -> {
+        CountDownLatch detached = new CountDownLatch(1);
+        if (!handler.post(() -> {
             released = true;
             if (choreographer != null) {
                 choreographer.removeFrameCallback(this);
             }
             destroyGl();
+            detached.countDown();
             thread.quitSafely();
-        });
+        })) {
+            return;
+        }
+        try {
+            detached.await(1, TimeUnit.SECONDS);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override
@@ -646,14 +627,25 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         handler.post(() -> {
             surfaceWidth = width;
             surfaceHeight = height;
-            stats.width = width;
-            stats.height = height;
         });
     }
 
     @Override
     public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
-        handler.post(this::destroyWindowSurface);
+        // The framework recycles the surface as soon as this returns, so wait for the
+        // render thread to detach it instead of queueing the teardown behind a swap.
+        CountDownLatch detached = new CountDownLatch(1);
+        if (!handler.post(() -> {
+            destroyWindowSurface();
+            detached.countDown();
+        })) {
+            return;
+        }
+        try {
+            detached.await(1, TimeUnit.SECONDS);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void initGl() {
@@ -910,12 +902,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         surfaceWidth = value[0];
         EGL14.eglQuerySurface(eglDisplay, eglWindow, EGL14.EGL_HEIGHT, value, 0);
         surfaceHeight = value[0];
-        stats.width = surfaceWidth;
-        stats.height = surfaceHeight;
         if (EGL14.eglMakeCurrent(eglDisplay, eglWindow, eglWindow, eglContext)) {
             EGL14.eglSwapInterval(eglDisplay, 0);
         }
         EGL14.eglMakeCurrent(eglDisplay, eglPbuffer, eglPbuffer, eglContext);
+        newFrame = true;
     }
 
     private void destroyWindowSurface() {
@@ -1018,7 +1009,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         if (pts > 0) {
             trackTiming(pts);
         }
-        if (drawEveryVsync && pts > 0 && videoWidth > 0 && videoHeight > 0) {
+        if (pts > 0 && videoWidth > 0 && videoHeight > 0) {
             writeIndex = (writeIndex + 1) % RING;
             copyToFrame(writeIndex);
             if (frameCount < RING) {
@@ -1031,7 +1022,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         }
         hasFrame = true;
         newFrame = true;
-        sourceCount++;
     }
 
     private void advancePair() {
@@ -1048,11 +1038,23 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private void trackTiming(long pts) {
         if (lastPtsNs > 0) {
             long delta = pts - lastPtsNs;
-            if (delta > 1_000_000L && delta < 500_000_000L) {
+            if (delta < 0 || delta > 2_000_000_000L) {
+                // Seek or track change: both ring slots are from before the jump.
+                resetStream();
+            } else if (delta > 1_000_000L && delta < 500_000_000L) {
                 intervalNs += (delta - intervalNs) / 8;
             }
         }
         lastPtsNs = pts;
+    }
+
+    private void resetStream() {
+        frameCount = 0;
+        writeIndex = RING - 1;
+        flowPrev = -1;
+        flowNext = -1;
+        flowValid = false;
+        pairStartNs = 0;
     }
 
     private void copyToFrame(int index) {
@@ -1404,20 +1406,15 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         if (released) {
             return;
         }
-        vsyncs++;
         if (eglWindow != EGL14.EGL_NO_SURFACE && hasFrame && !paused) {
-            boolean render;
-            if (drawEveryVsync) {
-                render = due(frameTimeNanos);
-            } else {
-                render = newFrame;
-            }
-            if (render) {
+            // Once the pair has played out, the endpoint is already on screen; keep it
+            // there instead of warping it again every vsync.
+            boolean live = newFrame || frameTimeNanos < pairStartNs + intervalNs;
+            if (live && due(frameTimeNanos)) {
                 newFrame = false;
                 draw(frameTimeNanos);
             }
         }
-        updateStats(frameTimeNanos);
         choreographer.postFrameCallback(this);
     }
 
@@ -1440,17 +1437,15 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         if (!EGL14.eglMakeCurrent(eglDisplay, eglWindow, eglWindow, eglContext)) {
             return;
         }
-        long started = SystemClock.elapsedRealtimeNanos();
         GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
         GLES20.glClearColor(0f, 0f, 0f, 1f);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
         boolean drawn = false;
-        if (drawEveryVsync && frameCount > 0) {
+        if (frameCount > 0) {
             if (flowValid) {
                 float timestep = (frameTimeNanos - pairStartNs) / (float) intervalNs;
                 drawWarp(flowPrev, flowNext, Math.max(0f, Math.min(1f, timestep)));
-                warped++;
             } else {
                 drawQuad(simpleProgram, simplePositionHandle, simpleTexCoordHandle,
                         GLES20.GL_TEXTURE_2D, frameTexture[writeIndex], simpleTextureHandle,
@@ -1464,11 +1459,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         }
 
         EGLExt.eglPresentationTimeANDROID(eglDisplay, eglWindow, frameTimeNanos);
-        EGL14.eglSwapBuffers(eglDisplay, eglWindow);
-
-        float ms = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f;
-        stats.frameMs = stats.frameMs == 0f ? ms : stats.frameMs * 0.9f + ms * 0.1f;
-        draws++;
+        if (!EGL14.eglSwapBuffers(eglDisplay, eglWindow)
+                && EGL14.eglGetError() == EGL14.EGL_CONTEXT_LOST) {
+            fail("EGL context lost");
+            return;
+        }
 
         EGL14.eglMakeCurrent(eglDisplay, eglPbuffer, eglPbuffer, eglContext);
     }
@@ -1519,34 +1514,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 .asFloatBuffer();
         buffer.put(values).position(0);
         return buffer;
-    }
-
-    private void updateStats(long frameTimeNanos) {
-        if (lastStatsNs == 0) {
-            lastStatsNs = frameTimeNanos;
-            lastDraws = draws;
-            lastWarped = warped;
-            lastVsyncs = vsyncs;
-            lastSource = sourceCount;
-            return;
-        }
-        long elapsed = frameTimeNanos - lastStatsNs;
-        if (elapsed < 1_000_000_000L) {
-            return;
-        }
-        double seconds = elapsed / 1_000_000_000d;
-        stats.outputFps = (int) Math.round((draws - lastDraws) / seconds);
-        stats.vsyncFps = (int) Math.round((vsyncs - lastVsyncs) / seconds);
-        stats.sourceFps = (int) Math.round((sourceCount - lastSource) / seconds);
-        long drawnDelta = draws - lastDraws;
-        stats.warpPct = drawnDelta > 0
-                ? (int) Math.round(100d * (warped - lastWarped) / drawnDelta) : 0;
-        stats.sourceFrames = sourceCount;
-        lastStatsNs = frameTimeNanos;
-        lastDraws = draws;
-        lastWarped = warped;
-        lastVsyncs = vsyncs;
-        lastSource = sourceCount;
     }
 
     private void fail(String reason) {
