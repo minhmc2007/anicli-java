@@ -212,7 +212,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "                     ay > 1e-5 ? clamp(0.5 * (u - d) / ay, -0.5, 0.5) : 0.0);\n"
             + "    vec2 center = (texture(uPick, vec2(0.5)).rg * 2.0 - 1.0) * uPickRange;\n"
             + "    vec2 shift = center + (bestCell - 24.0 + frac) * uStride;\n"
-            + "    vec2 e = (shift + 96.0) * (255.0 / 192.0);\n"
+            + "    vec2 e = (shift + 192.0) * (255.0 / 384.0);\n"
             + "    fragColor = vec4(floor(e.x) / 255.0, e.x - floor(e.x),\n"
             + "                     floor(e.y) / 255.0, e.y - floor(e.y));\n"
             + "}\n";
@@ -221,45 +221,39 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             "vec2 decodeFlow(vec4 e) {\n"
                     + "    vec2 packed = vec2(floor(e.r * 255.0 + 0.5) + e.g,\n"
                     + "                       floor(e.b * 255.0 + 0.5) + e.a);\n"
-                    + "    return packed * (192.0 / 255.0) - 96.0;\n"
+                    + "    return packed * (384.0 / 255.0) - 192.0;\n"
                     + "}\n";
 
     private static final String WARP_FRAGMENT_SHADER = GLSL_HEADER
             + FLOW_DECODE_GLSL
             + "uniform sampler2D uPrev;\n"
             + "uniform sampler2D uNext;\n"
-            + "uniform sampler2D uTiles;\n"
-            + "uniform sampler2D uTileSad;\n"
-            + "uniform vec2 uLumaSize;\n"
-            + "uniform vec2 uTileSize;\n"
-            + "uniform vec2 uGrid;\n"
+            + "uniform sampler2D uFlow;\n"
+            + "uniform sampler2D uSad;\n"
             + "uniform float uTimestep;\n"
             + "uniform vec2 uStep;\n"
             + "uniform vec2 uBad;\n"
             + "uniform vec2 uDis;\n"
             + "uniform float uDisW;\n"
             + "void main() {\n"
-            + "    vec2 s = (vTexCoord * uLumaSize) / uTileSize - 0.5;\n"
-            + "    vec2 tileUv = (s + 0.5) / uGrid;\n"
-            + "    vec2 shift = decodeFlow(texture(uTiles, tileUv));\n"
-            + "    float sad = texture(uTileSad, tileUv).r;\n"
+            + "    vec2 shift = decodeFlow(texture(uFlow, vTexCoord));\n"
             + "    vec2 shiftStep = shift * 4.0 * uStep;\n"
             + "    vec3 a = texture(uPrev, vTexCoord - shiftStep * uTimestep).rgb;\n"
             + "    vec3 b = texture(uNext, vTexCoord + shiftStep * (1.0 - uTimestep)).rgb;\n"
             + "    vec3 warped = mix(a, b, uTimestep);\n"
             + "    vec3 nearest = uTimestep < 0.5 ? texture(uPrev, vTexCoord).rgb\n"
             + "                                   : texture(uNext, vTexCoord).rgb;\n"
-            + "    float bad = smoothstep(uBad.x, uBad.y, sad);\n"
+            + "    float bad = smoothstep(uBad.x, uBad.y, texture(uSad, vTexCoord).r);\n"
             + "    float dis = abs(dot(a - b, vec3(0.299, 0.587, 0.114)));\n"
             + "    float occ = smoothstep(uDis.x, uDis.y, dis) * uDisW;\n"
             + "    fragColor = vec4(mix(warped, nearest, max(bad, occ)), 1.0);\n"
-            + "}\n";
+            + "}\n"
 
     private static final String COPY_FRAGMENT_SHADER = GLSL_HEADER
             + "uniform sampler2D uTex;\n"
             + "void main() {\n"
             + "    fragColor = vec4(texture(uTex, vTexCoord).rgb, 1.0);\n"
-            + "}\n";
+            + "}\n"
 
     private static final String TILE_SEARCH_FRAGMENT_SHADER = GLSL_HEADER
             + FLOW_DECODE_GLSL
@@ -271,58 +265,81 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "uniform vec2 uLumaSize;\n"
             + "uniform vec2 uTileSize;\n"
             + "uniform vec2 uGrid;\n"
-            + "uniform float uCandRange;\n"
             + "uniform float uReg;\n"
             + "float eval(vec2 origin, vec2 shift) {\n"
             + "    float sad = 0.0;\n"
-            + "    for (int j = 0; j < 6; ++j) {\n"
-            + "        for (int i = 0; i < 6; ++i) {\n"
-            + "            vec2 uv = origin + uTileSize * (0.15 + (vec2(float(i), float(j)) + 0.5)"
-            + " * 0.7 / 6.0);\n"
+            + "    for (int j = 0; j < 5; ++j) {\n"
+            + "        for (int i = 0; i < 5; ++i) {\n"
+            + "            vec2 uv = origin + uTileSize * (0.2 + (vec2(float(i), float(j)) + 0.5)\n"
+            + "                    * 0.6 / 5.0);\n"
             + "            sad += abs(texture(uPrev, uv / uLumaSize).r\n"
             + "                    - texture(uNext, (uv + shift) / uLumaSize).r);\n"
             + "        }\n"
             + "    }\n"
-            + "    return sad * (255.0 / 36.0);\n"
+            + "    return sad * (255.0 / 25.0);\n"
             + "}\n"
             + "void main() {\n"
             + "    vec2 cell = floor(vTexCoord * uGrid);\n"
             + "    vec2 origin = cell * uTileSize;\n"
             + "    vec2 global = decodeFlow(texture(uFlow, vec2(0.5)));\n"
-            + "    vec4 pg = texture(uPrevGlobal, vec2(0.5));\n"
-            + "    vec2 prevGlobal = decodeFlow(pg);\n"
-            + "    vec2 prevTile = decodeFlow(texture(uPrevTile, (cell + 0.5) / uGrid));\n"
-            + "    vec2 pred = clamp(global + (prevTile - prevGlobal) * pg.a,\n"
-            + "            global - vec2(uCandRange), global + vec2(uCandRange));\n"
+            + "    // The tile keeps its residual over the global vector from the previous pair,\n"
+            + "    // so a character can hold its own velocity instead of the camera's.\n"
+            + "    vec2 pred = clamp(global\n"
+            + "            + decodeFlow(texture(uPrevTile, (cell + 0.5) / uGrid))\n"
+            + "            - decodeFlow(texture(uPrevGlobal, vec2(0.5))),\n"
+            + "            global - vec2(96.0), global + vec2(96.0));\n"
             + "    float best = 1e9;\n"
-            + "    vec2 bestOff = vec2(0.0);\n"
-            + "    int r = int(uCandRange);\n"
-            + "    for (int dy = -r; dy <= r; ++dy) {\n"
-            + "        for (int dx = -r; dx <= r; ++dx) {\n"
-            + "            vec2 off = vec2(float(dx), float(dy));\n"
-            + "            float score = eval(origin, pred + off) + uReg * dot(off, off);\n"
+            + "    vec2 at = pred;\n"
+            + "    // +-24 luma at stride 4, then +-4 at stride 2, then +-1 at stride 1.\n"
+            + "    for (int dy = -6; dy <= 6; ++dy) {\n"
+            + "        for (int dx = -6; dx <= 6; ++dx) {\n"
+            + "            vec2 s = pred + vec2(float(dx), float(dy)) * 4.0;\n"
+            + "            float score = eval(origin, s) + uReg * dot(s - pred, s - pred);\n"
             + "            if (score < best) {\n"
             + "                best = score;\n"
-            + "                bestOff = off;\n"
+            + "                at = s;\n"
             + "            }\n"
             + "        }\n"
             + "    }\n"
-            + "    float c0 = eval(origin, pred + bestOff);\n"
-            + "    float l = eval(origin, pred + bestOff + vec2(-1.0, 0.0));\n"
-            + "    float rf = eval(origin, pred + bestOff + vec2(1.0, 0.0));\n"
-            + "    float u = eval(origin, pred + bestOff + vec2(0.0, -1.0));\n"
-            + "    float d = eval(origin, pred + bestOff + vec2(0.0, 1.0));\n"
-            + "    float ax = l - 2.0 * c0 + rf;\n"
+            + "    best = 1e9;\n"
+            + "    vec2 coarse = at;\n"
+            + "    for (int dy = -2; dy <= 2; ++dy) {\n"
+            + "        for (int dx = -2; dx <= 2; ++dx) {\n"
+            + "            vec2 s = coarse + vec2(float(dx), float(dy)) * 2.0;\n"
+            + "            float score = eval(origin, s) + uReg * dot(s - pred, s - pred);\n"
+            + "            if (score < best) {\n"
+            + "                best = score;\n"
+            + "                at = s;\n"
+            + "            }\n"
+            + "        }\n"
+            + "    }\n"
+            + "    best = 1e9;\n"
+            + "    vec2 mid = at;\n"
+            + "    for (int dy = -1; dy <= 1; ++dy) {\n"
+            + "        for (int dx = -1; dx <= 1; ++dx) {\n"
+            + "            vec2 s = mid + vec2(float(dx), float(dy));\n"
+            + "            float score = eval(origin, s) + uReg * dot(s - pred, s - pred);\n"
+            + "            if (score < best) {\n"
+            + "                best = score;\n"
+            + "                at = s;\n"
+            + "            }\n"
+            + "        }\n"
+            + "    }\n"
+            + "    float c0 = eval(origin, at);\n"
+            + "    float l = eval(origin, at + vec2(-1.0, 0.0));\n"
+            + "    float r = eval(origin, at + vec2(1.0, 0.0));\n"
+            + "    float u = eval(origin, at + vec2(0.0, -1.0));\n"
+            + "    float d = eval(origin, at + vec2(0.0, 1.0));\n"
+            + "    float ax = l - 2.0 * c0 + r;\n"
             + "    float ay = u - 2.0 * c0 + d;\n"
-            + "    vec2 frac = vec2(ax > 1e-5 ? clamp(0.5 * (l - rf) / ax, -0.5, 0.5) : 0.0,\n"
+            + "    vec2 frac = vec2(ax > 1e-5 ? clamp(0.5 * (l - r) / ax, -0.5, 0.5) : 0.0,\n"
             + "                     ay > 1e-5 ? clamp(0.5 * (u - d) / ay, -0.5, 0.5) : 0.0);\n"
-            + "    vec2 flow = pred + bestOff + frac;\n"
-            + "    vec2 e = (flow + 96.0) * (255.0 / 192.0);\n"
+            + "    vec2 e = clamp((at + frac + 192.0) * (255.0 / 384.0), 0.0, 255.0);\n"
             + "    fragColor = vec4(floor(e.x) / 255.0, fract(e.x),\n"
             + "                     floor(e.y) / 255.0, fract(e.y));\n"
-            + "}\n";
+            + "}\n"
 
-    private static final String TILE_SAD_FRAGMENT_SHADER = GLSL_HEADER
+    private static final String PIXEL_FLOW_FRAGMENT_SHADER = GLSL_HEADER
             + FLOW_DECODE_GLSL
             + "uniform sampler2D uPrev;\n"
             + "uniform sampler2D uNext;\n"
@@ -330,21 +347,90 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "uniform vec2 uLumaSize;\n"
             + "uniform vec2 uTileSize;\n"
             + "uniform vec2 uGrid;\n"
-            + "void main() {\n"
-            + "    vec2 cell = floor(vTexCoord * uGrid);\n"
-            + "    vec2 origin = cell * uTileSize;\n"
-            + "    vec2 shift = decodeFlow(texture(uTiles, (cell + 0.5) / uGrid));\n"
+            + "float box(vec2 p, vec2 s) {\n"
             + "    float sad = 0.0;\n"
-            + "    for (int j = 0; j < 6; ++j) {\n"
-            + "        for (int i = 0; i < 6; ++i) {\n"
-            + "            vec2 uv = origin + uTileSize * (0.15 + (vec2(float(i), float(j)) + 0.5)"
-            + " * 0.7 / 6.0);\n"
-            + "            sad += abs(texture(uPrev, uv / uLumaSize).r\n"
-            + "                    - texture(uNext, (uv + shift) / uLumaSize).r);\n"
+            + "    for (int j = -1; j <= 1; ++j) {\n"
+            + "        for (int i = -1; i <= 1; ++i) {\n"
+            + "            vec2 q = p + vec2(float(i), float(j));\n"
+            + "            sad += abs(texture(uPrev, q / uLumaSize).r\n"
+            + "                    - texture(uNext, (q + s) / uLumaSize).r);\n"
             + "        }\n"
             + "    }\n"
-            + "    fragColor = vec4(sad * (255.0 / 36.0) / 255.0, 1.0, 1.0, 1.0);\n"
-            + "}\n";
+            + "    return sad;\n"
+            + "}\n"
+            + "vec2 tileFlow(vec2 cell) {\n"
+            + "    return decodeFlow(texture(uTiles, (cell + 0.5) / uGrid));\n"
+            + "}\n"
+            + "void main() {\n"
+            + "    vec2 p = vTexCoord * uLumaSize;\n"
+            + "    vec2 t = p / uTileSize - 0.5;\n"
+            + "    vec2 base = floor(t);\n"
+            + "    vec2 f = t - base;\n"
+            + "    vec2 v00 = tileFlow(base);\n"
+            + "    vec2 v10 = tileFlow(base + vec2(1.0, 0.0));\n"
+            + "    vec2 v01 = tileFlow(base + vec2(0.0, 1.0));\n"
+            + "    vec2 v11 = tileFlow(base + vec2(1.0, 1.0));\n"
+            + "    float s00 = box(p, v00);\n"
+            + "    float s10 = box(p, v10);\n"
+            + "    float s01 = box(p, v01);\n"
+            + "    float s11 = box(p, v11);\n"
+            + "    vec2 v = v00;\n"
+            + "    float s = s00;\n"
+            + "    if (s10 < s) {\n"
+            + "        v = v10;\n"
+            + "        s = s10;\n"
+            + "    }\n"
+            + "    if (s01 < s) {\n"
+            + "        v = v01;\n"
+            + "        s = s01;\n"
+            + "    }\n"
+            + "    if (s11 < s) {\n"
+            + "        v = v11;\n"
+            + "        s = s11;\n"
+            + "    }\n"
+            + "    // Interpolate only while every neighbour fits the pixel equally well. Where they\n"
+            + "    // disagree one of them is the silhouette's real motion, so take the winner instead\n"
+            + "    // of mixing two objects into a rubber edge.\n"
+            + "    float lo = min(min(s00, s10), min(s01, s11));\n"
+            + "    float hi = max(max(s00, s10), max(s01, s11));\n"
+            + "    vec2 blend = v00 * (1.0 - f.x) * (1.0 - f.y)\n"
+            + "            + v10 * f.x * (1.0 - f.y)\n"
+            + "            + v01 * (1.0 - f.x) * f.y\n"
+            + "            + v11 * f.x * f.y;\n"
+            + "    v = mix(blend, v, smoothstep(0.5, 2.5, hi - lo));\n"
+            + "    float c0 = box(p, v);\n"
+            + "    float l = box(p, v + vec2(-1.0, 0.0));\n"
+            + "    float r = box(p, v + vec2(1.0, 0.0));\n"
+            + "    float u = box(p, v + vec2(0.0, -1.0));\n"
+            + "    float d = box(p, v + vec2(0.0, 1.0));\n"
+            + "    float ax = l - 2.0 * c0 + r;\n"
+            + "    float ay = u - 2.0 * c0 + d;\n"
+            + "    vec2 frac = vec2(ax > 1e-5 ? clamp(0.5 * (l - r) / ax, -0.5, 0.5) : 0.0,\n"
+            + "                     ay > 1e-5 ? clamp(0.5 * (u - d) / ay, -0.5, 0.5) : 0.0);\n"
+            + "    vec2 e = clamp((v + frac + 192.0) * (255.0 / 384.0), 0.0, 255.0);\n"
+            + "    fragColor = vec4(floor(e.x) / 255.0, fract(e.x),\n"
+            + "                     floor(e.y) / 255.0, fract(e.y));\n"
+            + "}\n"
+
+    private static final String PIXEL_SAD_FRAGMENT_SHADER = GLSL_HEADER
+            + FLOW_DECODE_GLSL
+            + "uniform sampler2D uPrev;\n"
+            + "uniform sampler2D uNext;\n"
+            + "uniform sampler2D uFlow;\n"
+            + "uniform vec2 uLumaSize;\n"
+            + "void main() {\n"
+            + "    vec2 p = vTexCoord * uLumaSize;\n"
+            + "    vec2 s = decodeFlow(texture(uFlow, vTexCoord));\n"
+            + "    float sad = 0.0;\n"
+            + "    for (int j = -2; j <= 2; ++j) {\n"
+            + "        for (int i = -2; i <= 2; ++i) {\n"
+            + "            vec2 q = p + vec2(float(i), float(j));\n"
+            + "            sad += abs(texture(uPrev, q / uLumaSize).r\n"
+            + "                    - texture(uNext, (q + s) / uLumaSize).r);\n"
+            + "        }\n"
+            + "    }\n"
+            + "    fragColor = vec4(sad / 25.0, 1.0, 1.0, 1.0);\n"
+            + "}\n"
 
     private static final float[] QUAD = {-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f};
     private static final float[] TEX_COORDS = {0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f};
@@ -398,11 +484,10 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private static final float FINE_STRIDE = 0.5f;
     private static final float FINE_INSET = 0.24f;
 
-    // Per-tile motion refinement (v2): tiles over the luma image, each searched
-    // around the global vector plus a temporal predictor from the previous pair.
-    private static final int TILE_TARGET = 32;      // approx luma px per tile
-    private static final int TILE_CAND_RANGE = 6;   // +- luma px around predictor
-    private static final float TILE_REG = 0.002f;   // tie-break toward predictor
+    // Per-tile motion field: a wide three-level search per tile around a temporal
+    // predictor, then a per-pixel winner-take-all pass that resolves silhouettes.
+    private static final int TILE_TARGET = 16;      // luma px per tile
+    private static final float TILE_REG = 0.002f;   // tie-break toward the predictor
     private static final float BAD_LO = 0.05f;
     private static final float BAD_HI = 0.14f;
     private static final float DIS_LO = 0.03f;
@@ -415,7 +500,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int pickProgram;
     private int refineProgram;
     private int tileSearchProgram;
-    private int tileSadProgram;
+    private int pixelFlowProgram;
+    private int pixelSadProgram;
     private int warpProgram;
     private int lumaSourceHandle;
     private int lumaTexelHandle;
@@ -443,23 +529,23 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int tileLumaSizeHandle;
     private int tileTileSizeHandle;
     private int tileGridHandle;
-    private int tileCandRangeHandle;
     private int tileRegHandle;
-    private int tileSadPrevHandle;
-    private int tileSadNextHandle;
-    private int tileSadTilesHandle;
-    private int tileSadLumaSizeHandle;
-    private int tileSadTileSizeHandle;
-    private int tileSadGridHandle;
+    private int pixelPrevHandle;
+    private int pixelNextHandle;
+    private int pixelTilesHandle;
+    private int pixelLumaSizeHandle;
+    private int pixelTileSizeHandle;
+    private int pixelGridHandle;
+    private int pixelSadPrevHandle;
+    private int pixelSadNextHandle;
+    private int pixelSadFlowHandle;
+    private int pixelSadLumaSizeHandle;
     private int warpPrevHandle;
     private int warpNextHandle;
-    private int warpTilesHandle;
-    private int warpTileSadHandle;
+    private int warpFlowHandle;
+    private int warpSadHandle;
     private int warpTimestepHandle;
     private int warpStepHandle;
-    private int warpLumaSizeHandle;
-    private int warpTileSizeHandle;
-    private int warpGridHandle;
     private int warpBadHandle;
     private int warpDisHandle;
     private int warpDisWHandle;
@@ -469,7 +555,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int pickTexture;
     private int flowTexture;
     private int tileTexture;
-    private int tileSadTexture;
+    private int pixelFlowTexture;
+    private int pixelSadTexture;
     private int prevTileTexture;
     private int prevGlobalTexture;
     private int tileGridW;
@@ -707,11 +794,12 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         pickProgram = linkProgram(GLSL_VERTEX_SHADER, PICK_FRAGMENT_SHADER);
         refineProgram = linkProgram(GLSL_VERTEX_SHADER, REFINE_FRAGMENT_SHADER);
         tileSearchProgram = linkProgram(GLSL_VERTEX_SHADER, TILE_SEARCH_FRAGMENT_SHADER);
-        tileSadProgram = linkProgram(GLSL_VERTEX_SHADER, TILE_SAD_FRAGMENT_SHADER);
+        pixelFlowProgram = linkProgram(GLSL_VERTEX_SHADER, PIXEL_FLOW_FRAGMENT_SHADER);
+        pixelSadProgram = linkProgram(GLSL_VERTEX_SHADER, PIXEL_SAD_FRAGMENT_SHADER);
         warpProgram = linkProgram(GLSL_VERTEX_SHADER, WARP_FRAGMENT_SHADER);
         if (lumaProgram == 0 || searchProgram == 0 || blockProgram == 0
-                || pickProgram == 0 || refineProgram == 0
-                || tileSearchProgram == 0 || tileSadProgram == 0 || warpProgram == 0) {
+                || pickProgram == 0 || refineProgram == 0 || tileSearchProgram == 0
+                || pixelFlowProgram == 0 || pixelSadProgram == 0 || warpProgram == 0) {
             return false;
         }
         lumaSourceHandle = uniform(lumaProgram, "uSource");
@@ -740,23 +828,23 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         tileLumaSizeHandle = uniform(tileSearchProgram, "uLumaSize");
         tileTileSizeHandle = uniform(tileSearchProgram, "uTileSize");
         tileGridHandle = uniform(tileSearchProgram, "uGrid");
-        tileCandRangeHandle = uniform(tileSearchProgram, "uCandRange");
         tileRegHandle = uniform(tileSearchProgram, "uReg");
-        tileSadPrevHandle = uniform(tileSadProgram, "uPrev");
-        tileSadNextHandle = uniform(tileSadProgram, "uNext");
-        tileSadTilesHandle = uniform(tileSadProgram, "uTiles");
-        tileSadLumaSizeHandle = uniform(tileSadProgram, "uLumaSize");
-        tileSadTileSizeHandle = uniform(tileSadProgram, "uTileSize");
-        tileSadGridHandle = uniform(tileSadProgram, "uGrid");
+        pixelPrevHandle = uniform(pixelFlowProgram, "uPrev");
+        pixelNextHandle = uniform(pixelFlowProgram, "uNext");
+        pixelTilesHandle = uniform(pixelFlowProgram, "uTiles");
+        pixelLumaSizeHandle = uniform(pixelFlowProgram, "uLumaSize");
+        pixelTileSizeHandle = uniform(pixelFlowProgram, "uTileSize");
+        pixelGridHandle = uniform(pixelFlowProgram, "uGrid");
+        pixelSadPrevHandle = uniform(pixelSadProgram, "uPrev");
+        pixelSadNextHandle = uniform(pixelSadProgram, "uNext");
+        pixelSadFlowHandle = uniform(pixelSadProgram, "uFlow");
+        pixelSadLumaSizeHandle = uniform(pixelSadProgram, "uLumaSize");
         warpPrevHandle = uniform(warpProgram, "uPrev");
         warpNextHandle = uniform(warpProgram, "uNext");
-        warpTilesHandle = uniform(warpProgram, "uTiles");
-        warpTileSadHandle = uniform(warpProgram, "uTileSad");
+        warpFlowHandle = uniform(warpProgram, "uFlow");
+        warpSadHandle = uniform(warpProgram, "uSad");
         warpTimestepHandle = uniform(warpProgram, "uTimestep");
         warpStepHandle = uniform(warpProgram, "uStep");
-        warpLumaSizeHandle = uniform(warpProgram, "uLumaSize");
-        warpTileSizeHandle = uniform(warpProgram, "uTileSize");
-        warpGridHandle = uniform(warpProgram, "uGrid");
         warpBadHandle = uniform(warpProgram, "uBad");
         warpDisHandle = uniform(warpProgram, "uDis");
         warpDisWHandle = uniform(warpProgram, "uDisW");
@@ -864,7 +952,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             copyProgram = 0;
         }
         int[] programs = {lumaProgram, searchProgram, blockProgram, pickProgram, refineProgram,
-                tileSearchProgram, tileSadProgram, warpProgram};
+                tileSearchProgram, pixelFlowProgram, pixelSadProgram, warpProgram};
         for (int id : programs) {
             if (id != 0) {
                 GLES20.glDeleteProgram(id);
@@ -876,7 +964,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         pickProgram = 0;
         refineProgram = 0;
         tileSearchProgram = 0;
-        tileSadProgram = 0;
+        pixelFlowProgram = 0;
+        pixelSadProgram = 0;
         warpProgram = 0;
         if (frameTexture[0] != 0) {
             GLES20.glDeleteTextures(RING, frameTexture, 0);
@@ -885,7 +974,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteTextures(1, new int[]{blockTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{pickTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
-            GLES20.glDeleteTextures(1, new int[]{tileTexture, tileSadTexture,
+            GLES20.glDeleteTextures(5, new int[]{tileTexture, pixelFlowTexture, pixelSadTexture,
                     prevTileTexture, prevGlobalTexture}, 0);
         }
         if (frameFbo[0] != 0) {
@@ -1002,7 +1091,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         renderBlocks();
         renderRefine(COARSE_RANGE, FINE_STRIDE);
         renderTileFlow(prev, next);
-        renderTileSad(prev, next);
+        renderPixelFlow(prev, next);
+        renderPixelSad(prev, next);
         copyTexture(tileTexture, prevTileTexture, tileGridW, tileGridH);
         copyTexture(flowTexture, prevGlobalTexture, 1, 1);
         flowPrev = prev;
@@ -1106,32 +1196,53 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glUniform2f(tileLumaSizeHandle, lumaWidth, lumaHeight);
         GLES20.glUniform2f(tileTileSizeHandle, tileW, tileH);
         GLES20.glUniform2f(tileGridHandle, tileGridW, tileGridH);
-        GLES20.glUniform1f(tileCandRangeHandle, TILE_CAND_RANGE);
         GLES20.glUniform1f(tileRegHandle, TILE_REG);
         drawFullQuad();
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
     }
 
-    /** True (unregularized) SAD at the chosen tile vector, for the fallback mask. */
-    private void renderTileSad(int prev, int next) {
+    /** Per pixel: pick the neighbouring tile vector that actually fits, then refine it. */
+    private void renderPixelFlow(int prev, int next) {
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
-                GLES20.GL_TEXTURE_2D, tileSadTexture, 0);
-        GLES20.glViewport(0, 0, tileGridW, tileGridH);
+                GLES20.GL_TEXTURE_2D, pixelFlowTexture, 0);
+        GLES20.glViewport(0, 0, lumaWidth, lumaHeight);
         unbindUnits();
-        GLES20.glUseProgram(tileSadProgram);
+        GLES20.glUseProgram(pixelFlowProgram);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[prev]);
-        GLES20.glUniform1i(tileSadPrevHandle, 0);
+        GLES20.glUniform1i(pixelPrevHandle, 0);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[next]);
-        GLES20.glUniform1i(tileSadNextHandle, 1);
+        GLES20.glUniform1i(pixelNextHandle, 1);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tileTexture);
-        GLES20.glUniform1i(tileSadTilesHandle, 2);
-        GLES20.glUniform2f(tileSadLumaSizeHandle, lumaWidth, lumaHeight);
-        GLES20.glUniform2f(tileSadTileSizeHandle, tileW, tileH);
-        GLES20.glUniform2f(tileSadGridHandle, tileGridW, tileGridH);
+        GLES20.glUniform1i(pixelTilesHandle, 2);
+        GLES20.glUniform2f(pixelLumaSizeHandle, lumaWidth, lumaHeight);
+        GLES20.glUniform2f(pixelTileSizeHandle, tileW, tileH);
+        GLES20.glUniform2f(pixelGridHandle, tileGridW, tileGridH);
+        drawFullQuad();
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+    }
+
+    /** Mean luma error of the chosen per-pixel vector, used as the fallback mask. */
+    private void renderPixelSad(int prev, int next) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, pixelSadTexture, 0);
+        GLES20.glViewport(0, 0, lumaWidth, lumaHeight);
+        unbindUnits();
+        GLES20.glUseProgram(pixelSadProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[prev]);
+        GLES20.glUniform1i(pixelSadPrevHandle, 0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[next]);
+        GLES20.glUniform1i(pixelSadNextHandle, 1);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pixelFlowTexture);
+        GLES20.glUniform1i(pixelSadFlowHandle, 2);
+        GLES20.glUniform2f(pixelSadLumaSizeHandle, lumaWidth, lumaHeight);
         drawFullQuad();
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
     }
@@ -1182,7 +1293,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteTextures(1, new int[]{blockTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{pickTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
-            GLES20.glDeleteTextures(1, new int[]{tileTexture, tileSadTexture,
+            GLES20.glDeleteTextures(5, new int[]{tileTexture, pixelFlowTexture, pixelSadTexture,
                     prevTileTexture, prevGlobalTexture}, 0);
         }
         videoWidth = width;
@@ -1242,9 +1353,14 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, tileGridW, tileGridH,
                 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
         GLES20.glGenTextures(1, generated, 0);
-        tileSadTexture = generated[0];
-        bindSimpleTexture(tileSadTexture);
-        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, tileGridW, tileGridH,
+        pixelFlowTexture = generated[0];
+        bindSimpleTexture(pixelFlowTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, lumaWidth, lumaHeight,
+                0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        GLES20.glGenTextures(1, generated, 0);
+        pixelSadTexture = generated[0];
+        bindSimpleTexture(pixelSadTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, lumaWidth, lumaHeight,
                 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
         GLES20.glGenTextures(1, generated, 0);
         prevTileTexture = generated[0];
@@ -1384,16 +1500,13 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTexture[next]);
         GLES20.glUniform1i(warpNextHandle, 1);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tileTexture);
-        GLES20.glUniform1i(warpTilesHandle, 2);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pixelFlowTexture);
+        GLES20.glUniform1i(warpFlowHandle, 2);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE3);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tileSadTexture);
-        GLES20.glUniform1i(warpTileSadHandle, 3);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pixelSadTexture);
+        GLES20.glUniform1i(warpSadHandle, 3);
         GLES20.glUniform1f(warpTimestepHandle, timestep);
         GLES20.glUniform2f(warpStepHandle, 1f / videoWidth, 1f / videoHeight);
-        GLES20.glUniform2f(warpLumaSizeHandle, lumaWidth, lumaHeight);
-        GLES20.glUniform2f(warpTileSizeHandle, tileW, tileH);
-        GLES20.glUniform2f(warpGridHandle, tileGridW, tileGridH);
         GLES20.glUniform2f(warpBadHandle, BAD_LO, BAD_HI);
         GLES20.glUniform2f(warpDisHandle, DIS_LO, DIS_HI);
         GLES20.glUniform1f(warpDisWHandle, DIS_W);
