@@ -140,20 +140,23 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
 
     private static final String BLOCK_FRAGMENT_SHADER = GLSL_HEADER
             + "uniform sampler2D uSearch;\n"
+            + "float full(vec4 s) {\n"
+            + "    return floor(s.b * 255.0 + 0.5) + s.a;\n"
+            + "}\n"
             + "void main() {\n"
             + "    vec2 cell = floor(vTexCoord * 7.0) * 7.0;\n"
-            + "    float best = 2.0;\n"
+            + "    float best = 1e9;\n"
             + "    vec2 bestCell = vec2(24.0);\n"
             + "    for (int y = 0; y < 7; ++y) {\n"
             + "        for (int x = 0; x < 7; ++x) {\n"
             + "            vec4 s = texture(uSearch, (cell + vec2(float(x), float(y)) + 0.5) / 49.0);\n"
-            + "            if (s.b < best) {\n"
-            + "                best = s.b;\n"
+            + "            if (full(s) < best) {\n"
+            + "                best = full(s);\n"
             + "                bestCell = floor(s.rg * 49.0);\n"
             + "            }\n"
             + "        }\n"
             + "    }\n"
-            + "    fragColor = vec4((bestCell + 0.5) / 49.0, best, 1.0);\n"
+            + "    fragColor = vec4((bestCell + 0.5) / 49.0, best / 255.0, 1.0);\n"
             + "}\n";
 
     private static final String PICK_FRAGMENT_SHADER = GLSL_HEADER
@@ -214,43 +217,133 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             + "                     floor(e.y) / 255.0, e.y - floor(e.y));\n"
             + "}\n";
 
-    private static final String SAD_FRAGMENT_SHADER = GLSL_HEADER
-            + "uniform sampler2D uBlocks;\n"
-            + "void main() {\n"
-            + "    float best = 2.0;\n"
-            + "    vec2 bestCell = vec2(24.0);\n"
-            + "    for (int y = 0; y < 7; ++y) {\n"
-            + "        for (int x = 0; x < 7; ++x) {\n"
-            + "            vec4 b = texture(uBlocks, (vec2(float(x), float(y)) + 0.5) / 7.0);\n"
-            + "            if (b.b < best) {\n"
-            + "                best = b.b;\n"
-            + "                bestCell = floor(b.rg * 49.0);\n"
-            + "            }\n"
-            + "        }\n"
-            + "    }\n"
-            + "    bool edge = any(equal(bestCell, vec2(0.0))) || any(equal(bestCell, vec2(48.0)));\n"
-            + "    fragColor = vec4(edge ? 1.0 : best, 0.0, 0.0, 1.0);\n"
-            + "}\n";
+    private static final String FLOW_DECODE_GLSL =
+            "vec2 decodeFlow(vec4 e) {\n"
+                    + "    vec2 packed = vec2(floor(e.r * 255.0 + 0.5) + e.g,\n"
+                    + "                       floor(e.b * 255.0 + 0.5) + e.a);\n"
+                    + "    return packed * (192.0 / 255.0) - 96.0;\n"
+                    + "}\n";
 
     private static final String WARP_FRAGMENT_SHADER = GLSL_HEADER
+            + FLOW_DECODE_GLSL
+            + "uniform sampler2D uPrev;\n"
+            + "uniform sampler2D uNext;\n"
+            + "uniform sampler2D uTiles;\n"
+            + "uniform sampler2D uTileSad;\n"
+            + "uniform vec2 uLumaSize;\n"
+            + "uniform vec2 uTileSize;\n"
+            + "uniform vec2 uGrid;\n"
+            + "uniform float uTimestep;\n"
+            + "uniform vec2 uStep;\n"
+            + "uniform vec2 uBad;\n"
+            + "uniform vec2 uDis;\n"
+            + "uniform float uDisW;\n"
+            + "void main() {\n"
+            + "    vec2 s = (vTexCoord * uLumaSize) / uTileSize - 0.5;\n"
+            + "    vec2 tileUv = (s + 0.5) / uGrid;\n"
+            + "    vec2 shift = decodeFlow(texture(uTiles, tileUv));\n"
+            + "    float sad = texture(uTileSad, tileUv).r;\n"
+            + "    vec2 shiftStep = shift * 4.0 * uStep;\n"
+            + "    vec3 a = texture(uPrev, vTexCoord - shiftStep * uTimestep).rgb;\n"
+            + "    vec3 b = texture(uNext, vTexCoord + shiftStep * (1.0 - uTimestep)).rgb;\n"
+            + "    vec3 warped = mix(a, b, uTimestep);\n"
+            + "    vec3 nearest = uTimestep < 0.5 ? texture(uPrev, vTexCoord).rgb\n"
+            + "                                   : texture(uNext, vTexCoord).rgb;\n"
+            + "    float bad = smoothstep(uBad.x, uBad.y, sad);\n"
+            + "    float dis = abs(dot(a - b, vec3(0.299, 0.587, 0.114)));\n"
+            + "    float occ = smoothstep(uDis.x, uDis.y, dis) * uDisW;\n"
+            + "    fragColor = vec4(mix(warped, nearest, max(bad, occ)), 1.0);\n"
+            + "}\n";
+
+    private static final String COPY_FRAGMENT_SHADER = GLSL_HEADER
+            + "uniform sampler2D uTex;\n"
+            + "void main() {\n"
+            + "    fragColor = vec4(texture(uTex, vTexCoord).rgb, 1.0);\n"
+            + "}\n";
+
+    private static final String TILE_SEARCH_FRAGMENT_SHADER = GLSL_HEADER
+            + FLOW_DECODE_GLSL
             + "uniform sampler2D uPrev;\n"
             + "uniform sampler2D uNext;\n"
             + "uniform sampler2D uFlow;\n"
-            + "uniform sampler2D uSad;\n"
-            + "uniform float uTimestep;\n"
-            + "uniform vec2 uStep;\n"
+            + "uniform sampler2D uPrevTile;\n"
+            + "uniform sampler2D uPrevGlobal;\n"
+            + "uniform vec2 uLumaSize;\n"
+            + "uniform vec2 uTileSize;\n"
+            + "uniform vec2 uGrid;\n"
+            + "uniform float uCandRange;\n"
+            + "uniform float uReg;\n"
+            + "float eval(vec2 origin, vec2 shift) {\n"
+            + "    float sad = 0.0;\n"
+            + "    for (int j = 0; j < 6; ++j) {\n"
+            + "        for (int i = 0; i < 6; ++i) {\n"
+            + "            vec2 uv = origin + uTileSize * (0.15 + (vec2(float(i), float(j)) + 0.5)"
+            + " * 0.7 / 6.0);\n"
+            + "            sad += abs(texture(uPrev, uv / uLumaSize).r\n"
+            + "                    - texture(uNext, (uv + shift) / uLumaSize).r);\n"
+            + "        }\n"
+            + "    }\n"
+            + "    return sad * (255.0 / 36.0);\n"
+            + "}\n"
             + "void main() {\n"
-            + "    vec4 flow = texture(uFlow, vec2(0.5));\n"
-            + "    vec2 packed = vec2(floor(flow.r * 255.0 + 0.5) + flow.g,\n"
-            + "                       floor(flow.b * 255.0 + 0.5) + flow.a);\n"
-            + "    vec2 shift = (packed * (192.0 / 255.0) - 96.0) * 4.0 * uStep;\n"
-            + "    vec3 warped = mix(texture(uPrev, vTexCoord - shift * uTimestep).rgb,\n"
-            + "                      texture(uNext, vTexCoord + shift * (1.0 - uTimestep)).rgb,\n"
-            + "                      uTimestep);\n"
-            + "    vec3 nearest = uTimestep < 0.5 ? texture(uPrev, vTexCoord).rgb\n"
-            + "                                   : texture(uNext, vTexCoord).rgb;\n"
-            + "    float bad = smoothstep(0.08, 0.20, texture(uSad, vec2(0.5)).r);\n"
-            + "    fragColor = vec4(mix(warped, nearest, bad), 1.0);\n"
+            + "    vec2 cell = floor(vTexCoord * uGrid);\n"
+            + "    vec2 origin = cell * uTileSize;\n"
+            + "    vec2 global = decodeFlow(texture(uFlow, vec2(0.5)));\n"
+            + "    vec4 pg = texture(uPrevGlobal, vec2(0.5));\n"
+            + "    vec2 prevGlobal = decodeFlow(pg);\n"
+            + "    vec2 prevTile = decodeFlow(texture(uPrevTile, (cell + 0.5) / uGrid));\n"
+            + "    vec2 pred = clamp(global + (prevTile - prevGlobal) * pg.a,\n"
+            + "            global - vec2(uCandRange), global + vec2(uCandRange));\n"
+            + "    float best = 1e9;\n"
+            + "    vec2 bestOff = vec2(0.0);\n"
+            + "    int r = int(uCandRange);\n"
+            + "    for (int dy = -r; dy <= r; ++dy) {\n"
+            + "        for (int dx = -r; dx <= r; ++dx) {\n"
+            + "            vec2 off = vec2(float(dx), float(dy));\n"
+            + "            float score = eval(origin, pred + off) + uReg * dot(off, off);\n"
+            + "            if (score < best) {\n"
+            + "                best = score;\n"
+            + "                bestOff = off;\n"
+            + "            }\n"
+            + "        }\n"
+            + "    }\n"
+            + "    float c0 = eval(origin, pred + bestOff);\n"
+            + "    float l = eval(origin, pred + bestOff + vec2(-1.0, 0.0));\n"
+            + "    float rf = eval(origin, pred + bestOff + vec2(1.0, 0.0));\n"
+            + "    float u = eval(origin, pred + bestOff + vec2(0.0, -1.0));\n"
+            + "    float d = eval(origin, pred + bestOff + vec2(0.0, 1.0));\n"
+            + "    float ax = l - 2.0 * c0 + rf;\n"
+            + "    float ay = u - 2.0 * c0 + d;\n"
+            + "    vec2 frac = vec2(ax > 1e-5 ? clamp(0.5 * (l - rf) / ax, -0.5, 0.5) : 0.0,\n"
+            + "                     ay > 1e-5 ? clamp(0.5 * (u - d) / ay, -0.5, 0.5) : 0.0);\n"
+            + "    vec2 flow = pred + bestOff + frac;\n"
+            + "    vec2 e = (flow + 96.0) * (255.0 / 192.0);\n"
+            + "    fragColor = vec4(floor(e.x) / 255.0, fract(e.x),\n"
+            + "                     floor(e.y) / 255.0, fract(e.y));\n"
+            + "}\n";
+
+    private static final String TILE_SAD_FRAGMENT_SHADER = GLSL_HEADER
+            + FLOW_DECODE_GLSL
+            + "uniform sampler2D uPrev;\n"
+            + "uniform sampler2D uNext;\n"
+            + "uniform sampler2D uTiles;\n"
+            + "uniform vec2 uLumaSize;\n"
+            + "uniform vec2 uTileSize;\n"
+            + "uniform vec2 uGrid;\n"
+            + "void main() {\n"
+            + "    vec2 cell = floor(vTexCoord * uGrid);\n"
+            + "    vec2 origin = cell * uTileSize;\n"
+            + "    vec2 shift = decodeFlow(texture(uTiles, (cell + 0.5) / uGrid));\n"
+            + "    float sad = 0.0;\n"
+            + "    for (int j = 0; j < 6; ++j) {\n"
+            + "        for (int i = 0; i < 6; ++i) {\n"
+            + "            vec2 uv = origin + uTileSize * (0.15 + (vec2(float(i), float(j)) + 0.5)"
+            + " * 0.7 / 6.0);\n"
+            + "            sad += abs(texture(uPrev, uv / uLumaSize).r\n"
+            + "                    - texture(uNext, (uv + shift) / uLumaSize).r);\n"
+            + "        }\n"
+            + "    }\n"
+            + "    fragColor = vec4(sad * (255.0 / 36.0) / 255.0, 1.0, 1.0, 1.0);\n"
             + "}\n";
 
     private static final float[] QUAD = {-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f};
@@ -305,12 +398,24 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private static final float FINE_STRIDE = 0.5f;
     private static final float FINE_INSET = 0.24f;
 
+    // Per-tile motion refinement (v2): tiles over the luma image, each searched
+    // around the global vector plus a temporal predictor from the previous pair.
+    private static final int TILE_TARGET = 32;      // approx luma px per tile
+    private static final int TILE_CAND_RANGE = 6;   // +- luma px around predictor
+    private static final float TILE_REG = 0.002f;   // tie-break toward predictor
+    private static final float BAD_LO = 0.05f;
+    private static final float BAD_HI = 0.14f;
+    private static final float DIS_LO = 0.03f;
+    private static final float DIS_HI = 0.10f;
+    private static final float DIS_W = 0.85f;
+
     private int lumaProgram;
     private int searchProgram;
     private int blockProgram;
     private int pickProgram;
     private int refineProgram;
-    private int sadProgram;
+    private int tileSearchProgram;
+    private int tileSadProgram;
     private int warpProgram;
     private int lumaSourceHandle;
     private int lumaTexelHandle;
@@ -330,19 +435,47 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int refinePickHandle;
     private int refinePickRangeHandle;
     private int refineStrideHandle;
-    private int sadBlocksHandle;
+    private int tilePrevHandle;
+    private int tileNextHandle;
+    private int tileFlowHandle;
+    private int tilePrevTileHandle;
+    private int tilePrevGlobalHandle;
+    private int tileLumaSizeHandle;
+    private int tileTileSizeHandle;
+    private int tileGridHandle;
+    private int tileCandRangeHandle;
+    private int tileRegHandle;
+    private int tileSadPrevHandle;
+    private int tileSadNextHandle;
+    private int tileSadTilesHandle;
+    private int tileSadLumaSizeHandle;
+    private int tileSadTileSizeHandle;
+    private int tileSadGridHandle;
     private int warpPrevHandle;
     private int warpNextHandle;
-    private int warpFlowHandle;
-    private int warpSadHandle;
+    private int warpTilesHandle;
+    private int warpTileSadHandle;
     private int warpTimestepHandle;
     private int warpStepHandle;
+    private int warpLumaSizeHandle;
+    private int warpTileSizeHandle;
+    private int warpGridHandle;
+    private int warpBadHandle;
+    private int warpDisHandle;
+    private int warpDisWHandle;
     private final int[] lumaTexture = new int[RING];
     private int searchTexture;
     private int blockTexture;
     private int pickTexture;
     private int flowTexture;
-    private int flowSadTexture;
+    private int tileTexture;
+    private int tileSadTexture;
+    private int prevTileTexture;
+    private int prevGlobalTexture;
+    private int tileGridW;
+    private int tileGridH;
+    private float tileW;
+    private float tileH;
     private int lumaWidth;
     private int lumaHeight;
     private int flowPrev = -1;
@@ -350,6 +483,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private boolean flowValid;
 
     private int simpleProgram;
+    private int copyProgram;
+    private int copyTexHandle;
     private int simplePositionHandle;
     private int simpleTexCoordHandle;
     private int simpleTextureHandle;
@@ -554,12 +689,14 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
 
     private boolean buildSimpleProgram() {
         simpleProgram = linkProgram(SIMPLE_VERTEX_SHADER, SIMPLE_FRAGMENT_SHADER);
-        if (simpleProgram == 0) {
+        copyProgram = linkProgram(GLSL_VERTEX_SHADER, COPY_FRAGMENT_SHADER);
+        if (simpleProgram == 0 || copyProgram == 0) {
             return false;
         }
         simplePositionHandle = GLES20.glGetAttribLocation(simpleProgram, "aPosition");
         simpleTexCoordHandle = GLES20.glGetAttribLocation(simpleProgram, "aTexCoord");
         simpleTextureHandle = GLES20.glGetUniformLocation(simpleProgram, "uTexture");
+        copyTexHandle = GLES20.glGetUniformLocation(copyProgram, "uTex");
         return true;
     }
 
@@ -569,11 +706,12 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         blockProgram = linkProgram(GLSL_VERTEX_SHADER, BLOCK_FRAGMENT_SHADER);
         pickProgram = linkProgram(GLSL_VERTEX_SHADER, PICK_FRAGMENT_SHADER);
         refineProgram = linkProgram(GLSL_VERTEX_SHADER, REFINE_FRAGMENT_SHADER);
-        sadProgram = linkProgram(GLSL_VERTEX_SHADER, SAD_FRAGMENT_SHADER);
+        tileSearchProgram = linkProgram(GLSL_VERTEX_SHADER, TILE_SEARCH_FRAGMENT_SHADER);
+        tileSadProgram = linkProgram(GLSL_VERTEX_SHADER, TILE_SAD_FRAGMENT_SHADER);
         warpProgram = linkProgram(GLSL_VERTEX_SHADER, WARP_FRAGMENT_SHADER);
         if (lumaProgram == 0 || searchProgram == 0 || blockProgram == 0
-                || pickProgram == 0 || refineProgram == 0 || sadProgram == 0
-                || warpProgram == 0) {
+                || pickProgram == 0 || refineProgram == 0
+                || tileSearchProgram == 0 || tileSadProgram == 0 || warpProgram == 0) {
             return false;
         }
         lumaSourceHandle = uniform(lumaProgram, "uSource");
@@ -594,13 +732,34 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         refinePickHandle = uniform(refineProgram, "uPick");
         refinePickRangeHandle = uniform(refineProgram, "uPickRange");
         refineStrideHandle = uniform(refineProgram, "uStride");
-        sadBlocksHandle = uniform(sadProgram, "uBlocks");
+        tilePrevHandle = uniform(tileSearchProgram, "uPrev");
+        tileNextHandle = uniform(tileSearchProgram, "uNext");
+        tileFlowHandle = uniform(tileSearchProgram, "uFlow");
+        tilePrevTileHandle = uniform(tileSearchProgram, "uPrevTile");
+        tilePrevGlobalHandle = uniform(tileSearchProgram, "uPrevGlobal");
+        tileLumaSizeHandle = uniform(tileSearchProgram, "uLumaSize");
+        tileTileSizeHandle = uniform(tileSearchProgram, "uTileSize");
+        tileGridHandle = uniform(tileSearchProgram, "uGrid");
+        tileCandRangeHandle = uniform(tileSearchProgram, "uCandRange");
+        tileRegHandle = uniform(tileSearchProgram, "uReg");
+        tileSadPrevHandle = uniform(tileSadProgram, "uPrev");
+        tileSadNextHandle = uniform(tileSadProgram, "uNext");
+        tileSadTilesHandle = uniform(tileSadProgram, "uTiles");
+        tileSadLumaSizeHandle = uniform(tileSadProgram, "uLumaSize");
+        tileSadTileSizeHandle = uniform(tileSadProgram, "uTileSize");
+        tileSadGridHandle = uniform(tileSadProgram, "uGrid");
         warpPrevHandle = uniform(warpProgram, "uPrev");
         warpNextHandle = uniform(warpProgram, "uNext");
-        warpFlowHandle = uniform(warpProgram, "uFlow");
-        warpSadHandle = uniform(warpProgram, "uSad");
+        warpTilesHandle = uniform(warpProgram, "uTiles");
+        warpTileSadHandle = uniform(warpProgram, "uTileSad");
         warpTimestepHandle = uniform(warpProgram, "uTimestep");
         warpStepHandle = uniform(warpProgram, "uStep");
+        warpLumaSizeHandle = uniform(warpProgram, "uLumaSize");
+        warpTileSizeHandle = uniform(warpProgram, "uTileSize");
+        warpGridHandle = uniform(warpProgram, "uGrid");
+        warpBadHandle = uniform(warpProgram, "uBad");
+        warpDisHandle = uniform(warpProgram, "uDis");
+        warpDisWHandle = uniform(warpProgram, "uDisW");
         return true;
     }
 
@@ -700,8 +859,12 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteProgram(simpleProgram);
             simpleProgram = 0;
         }
+        if (copyProgram != 0) {
+            GLES20.glDeleteProgram(copyProgram);
+            copyProgram = 0;
+        }
         int[] programs = {lumaProgram, searchProgram, blockProgram, pickProgram, refineProgram,
-                sadProgram, warpProgram};
+                tileSearchProgram, tileSadProgram, warpProgram};
         for (int id : programs) {
             if (id != 0) {
                 GLES20.glDeleteProgram(id);
@@ -712,7 +875,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         blockProgram = 0;
         pickProgram = 0;
         refineProgram = 0;
-        sadProgram = 0;
+        tileSearchProgram = 0;
+        tileSadProgram = 0;
         warpProgram = 0;
         if (frameTexture[0] != 0) {
             GLES20.glDeleteTextures(RING, frameTexture, 0);
@@ -721,7 +885,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteTextures(1, new int[]{blockTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{pickTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
-            GLES20.glDeleteTextures(1, new int[]{flowSadTexture}, 0);
+            GLES20.glDeleteTextures(1, new int[]{tileTexture, tileSadTexture,
+                    prevTileTexture, prevGlobalTexture}, 0);
         }
         if (frameFbo[0] != 0) {
             GLES20.glDeleteFramebuffers(1, frameFbo, 0);
@@ -836,7 +1001,10 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         renderSearch(prev, next, COARSE_RANGE, FINE_STRIDE, FINE_INSET);
         renderBlocks();
         renderRefine(COARSE_RANGE, FINE_STRIDE);
-        renderSad();
+        renderTileFlow(prev, next);
+        renderTileSad(prev, next);
+        copyTexture(tileTexture, prevTileTexture, tileGridW, tileGridH);
+        copyTexture(flowTexture, prevGlobalTexture, 1, 1);
         flowPrev = prev;
         flowNext = next;
         flowValid = true;
@@ -912,21 +1080,78 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         drawFullQuad();
     }
 
-    private void renderSad() {
+    /** One fragment per tile: local motion search around the global vector. */
+    private void renderTileFlow(int prev, int next) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
-                GLES20.GL_TEXTURE_2D, flowSadTexture, 0);
-        GLES20.glViewport(0, 0, 1, 1);
+                GLES20.GL_TEXTURE_2D, tileTexture, 0);
+        GLES20.glViewport(0, 0, tileGridW, tileGridH);
         unbindUnits();
-        GLES20.glUseProgram(sadProgram);
+        GLES20.glUseProgram(tileSearchProgram);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, blockTexture);
-        GLES20.glUniform1i(sadBlocksHandle, 0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[prev]);
+        GLES20.glUniform1i(tilePrevHandle, 0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[next]);
+        GLES20.glUniform1i(tileNextHandle, 1);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, flowTexture);
+        GLES20.glUniform1i(tileFlowHandle, 2);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE3);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, prevTileTexture);
+        GLES20.glUniform1i(tilePrevTileHandle, 3);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE4);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, prevGlobalTexture);
+        GLES20.glUniform1i(tilePrevGlobalHandle, 4);
+        GLES20.glUniform2f(tileLumaSizeHandle, lumaWidth, lumaHeight);
+        GLES20.glUniform2f(tileTileSizeHandle, tileW, tileH);
+        GLES20.glUniform2f(tileGridHandle, tileGridW, tileGridH);
+        GLES20.glUniform1f(tileCandRangeHandle, TILE_CAND_RANGE);
+        GLES20.glUniform1f(tileRegHandle, TILE_REG);
+        drawFullQuad();
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+    }
+
+    /** True (unregularized) SAD at the chosen tile vector, for the fallback mask. */
+    private void renderTileSad(int prev, int next) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, tileSadTexture, 0);
+        GLES20.glViewport(0, 0, tileGridW, tileGridH);
+        unbindUnits();
+        GLES20.glUseProgram(tileSadProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[prev]);
+        GLES20.glUniform1i(tileSadPrevHandle, 0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[next]);
+        GLES20.glUniform1i(tileSadNextHandle, 1);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tileTexture);
+        GLES20.glUniform1i(tileSadTilesHandle, 2);
+        GLES20.glUniform2f(tileSadLumaSizeHandle, lumaWidth, lumaHeight);
+        GLES20.glUniform2f(tileSadTileSizeHandle, tileW, tileH);
+        GLES20.glUniform2f(tileSadGridHandle, tileGridW, tileGridH);
+        drawFullQuad();
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+    }
+
+    private void copyTexture(int src, int dst, int width, int height) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, dst, 0);
+        GLES20.glViewport(0, 0, width, height);
+        unbindUnits();
+        GLES20.glUseProgram(copyProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, src);
+        GLES20.glUniform1i(copyTexHandle, 0);
         drawFullQuad();
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
     }
 
     private static void unbindUnits() {
-        for (int unit = 0; unit < 4; unit++) {
+        for (int unit = 0; unit < 5; unit++) {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + unit);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
         }
@@ -957,7 +1182,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteTextures(1, new int[]{blockTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{pickTexture}, 0);
             GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
-            GLES20.glDeleteTextures(1, new int[]{flowSadTexture}, 0);
+            GLES20.glDeleteTextures(1, new int[]{tileTexture, tileSadTexture,
+                    prevTileTexture, prevGlobalTexture}, 0);
         }
         videoWidth = width;
         videoHeight = height;
@@ -973,6 +1199,10 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         }
         lumaWidth = Math.max(1, width / MOTION_SCALE);
         lumaHeight = Math.max(1, height / MOTION_SCALE);
+        tileGridW = Math.max(1, (lumaWidth + TILE_TARGET - 1) / TILE_TARGET);
+        tileGridH = Math.max(1, (lumaHeight + TILE_TARGET - 1) / TILE_TARGET);
+        tileW = lumaWidth / (float) tileGridW;
+        tileH = lumaHeight / (float) tileGridH;
         GLES20.glGenTextures(RING, frameTexture, 0);
         for (int texture : frameTexture) {
             bindSimpleTexture(texture);
@@ -1007,10 +1237,38 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 1, 1,
                 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
         GLES20.glGenTextures(1, generated, 0);
-        flowSadTexture = generated[0];
-        bindSimpleTexture(flowSadTexture);
+        tileTexture = generated[0];
+        bindSimpleTexture(tileTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, tileGridW, tileGridH,
+                0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        GLES20.glGenTextures(1, generated, 0);
+        tileSadTexture = generated[0];
+        bindSimpleTexture(tileSadTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, tileGridW, tileGridH,
+                0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        GLES20.glGenTextures(1, generated, 0);
+        prevTileTexture = generated[0];
+        bindSimpleTexture(prevTileTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, tileGridW, tileGridH,
+                0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        GLES20.glGenTextures(1, generated, 0);
+        prevGlobalTexture = generated[0];
+        bindSimpleTexture(prevGlobalTexture);
         GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 1, 1,
                 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        clearTexture(prevGlobalTexture, 1, 1);
+        clearTexture(prevTileTexture, tileGridW, tileGridH);
+    }
+
+    private void clearTexture(int texture, int width, int height) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, texture, 0);
+        GLES20.glViewport(0, 0, width, height);
+        GLES20.glClearColor(0f, 0f, 0f, 0f);
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        GLES20.glClearColor(0f, 0f, 0f, 1f);
     }
 
     private static void bindSimpleTexture(int texture) {
@@ -1126,13 +1384,19 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTexture[next]);
         GLES20.glUniform1i(warpNextHandle, 1);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, flowTexture);
-        GLES20.glUniform1i(warpFlowHandle, 2);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tileTexture);
+        GLES20.glUniform1i(warpTilesHandle, 2);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE3);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, flowSadTexture);
-        GLES20.glUniform1i(warpSadHandle, 3);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tileSadTexture);
+        GLES20.glUniform1i(warpTileSadHandle, 3);
         GLES20.glUniform1f(warpTimestepHandle, timestep);
         GLES20.glUniform2f(warpStepHandle, 1f / videoWidth, 1f / videoHeight);
+        GLES20.glUniform2f(warpLumaSizeHandle, lumaWidth, lumaHeight);
+        GLES20.glUniform2f(warpTileSizeHandle, tileW, tileH);
+        GLES20.glUniform2f(warpGridHandle, tileGridW, tileGridH);
+        GLES20.glUniform2f(warpBadHandle, BAD_LO, BAD_HI);
+        GLES20.glUniform2f(warpDisHandle, DIS_LO, DIS_HI);
+        GLES20.glUniform1f(warpDisWHandle, DIS_W);
         drawFullQuad();
     }
 
