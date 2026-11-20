@@ -393,6 +393,9 @@ public final class PlayerActivity extends BaseActivity {
                     frameGenFrame.setAspectRatio(videoSize.pixelWidthHeightRatio
                             * videoSize.width / videoSize.height);
                 }
+                if (frameGen != null && videoSize.width > 0 && videoSize.height > 0) {
+                    frameGen.setVideoSize(videoSize.width, videoSize.height);
+                }
             }
 
             @Override

@@ -9,6 +9,7 @@ import android.opengl.EGLExt;
 import android.opengl.EGLSurface;
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
+import android.opengl.GLES30;
 import android.opengl.Matrix;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -63,6 +64,106 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                     + "    gl_FragColor = texture2D(uTexture, vTexCoord);\n"
                     + "}\n";
 
+    private static final String SIMPLE_VERTEX_SHADER =
+            "attribute vec4 aPosition;\n"
+                    + "attribute vec2 aTexCoord;\n"
+                    + "varying vec2 vTexCoord;\n"
+                    + "void main() {\n"
+                    + "    gl_Position = aPosition;\n"
+                    + "    vTexCoord = aTexCoord;\n"
+                    + "}\n";
+
+    private static final String SIMPLE_FRAGMENT_SHADER =
+            "precision mediump float;\n"
+                    + "varying vec2 vTexCoord;\n"
+                    + "uniform sampler2D uTexture;\n"
+                    + "void main() {\n"
+                    + "    gl_FragColor = texture2D(uTexture, vTexCoord);\n"
+                    + "}\n";
+
+    private static final String GLSL_HEADER =
+            "#version 300 es\n"
+                    + "precision highp float;\n"
+                    + "in vec2 vTexCoord;\n"
+                    + "out vec4 fragColor;\n";
+
+    private static final String GLSL_VERTEX_SHADER =
+            "#version 300 es\n"
+                    + "in vec4 aPosition;\n"
+                    + "in vec2 aTexCoord;\n"
+                    + "out vec2 vTexCoord;\n"
+                    + "void main() {\n"
+                    + "    gl_Position = aPosition;\n"
+                    + "    vTexCoord = aTexCoord;\n"
+                    + "}\n";
+
+    private static final String LUMA_FRAGMENT_SHADER = GLSL_HEADER
+            + "uniform sampler2D uSource;\n"
+            + "uniform vec2 uTexel;\n"
+            + "float luma(vec2 uv) {\n"
+            + "    vec3 c = texture(uSource, uv).rgb;\n"
+            + "    return dot(c, vec3(0.299, 0.587, 0.114));\n"
+            + "}\n"
+            + "void main() {\n"
+            + "    float y = 0.25 * (luma(vTexCoord + vec2(-uTexel.x, -uTexel.y))\n"
+            + "            + luma(vTexCoord + vec2(uTexel.x, -uTexel.y))\n"
+            + "            + luma(vTexCoord + vec2(-uTexel.x, uTexel.y))\n"
+            + "            + luma(vTexCoord + vec2(uTexel.x, uTexel.y)));\n"
+            + "    fragColor = vec4(y, 0.0, 0.0, 1.0);\n"
+            + "}\n";
+
+    private static final String SEARCH_FRAGMENT_SHADER = GLSL_HEADER
+            + "uniform sampler2D uPrev;\n"
+            + "uniform sampler2D uNext;\n"
+            + "uniform vec2 uStep;\n"
+            + "void main() {\n"
+            + "    vec2 idx = floor(vTexCoord * 49.0);\n"
+            + "    vec2 shift = idx - 24.0;\n"
+            + "    float sad = 0.0;\n"
+            + "    for (int y = 0; y < 9; ++y) {\n"
+            + "        for (int x = 0; x < 16; ++x) {\n"
+            + "            vec2 uv = (vec2(float(x), float(y)) + 0.5) / vec2(16.0, 9.0);\n"
+            + "            sad += abs(texture(uPrev, uv).r - texture(uNext, uv - shift * uStep).r);\n"
+            + "        }\n"
+            + "    }\n"
+            + "    fragColor = vec4((shift + 24.0) / 48.0, sad / 144.0, 1.0);\n"
+            + "}\n";
+
+    private static final String REDUCE_FRAGMENT_SHADER = GLSL_HEADER
+            + "uniform sampler2D uSearch;\n"
+            + "void main() {\n"
+            + "    float best = 2.0;\n"
+            + "    vec2 bestShift = vec2(0.5);\n"
+            + "    for (int y = 0; y < 49; ++y) {\n"
+            + "        for (int x = 0; x < 49; ++x) {\n"
+            + "            vec4 s = texture(uSearch, (vec2(float(x), float(y)) + 0.5) / 49.0);\n"
+            + "            if (s.b < best) {\n"
+            + "                best = s.b;\n"
+            + "                bestShift = s.xy;\n"
+            + "            }\n"
+            + "        }\n"
+            + "    }\n"
+            + "    fragColor = vec4(bestShift, best, 1.0);\n"
+            + "}\n";
+
+    private static final String WARP_FRAGMENT_SHADER = GLSL_HEADER
+            + "uniform sampler2D uPrev;\n"
+            + "uniform sampler2D uNext;\n"
+            + "uniform sampler2D uFlow;\n"
+            + "uniform float uTimestep;\n"
+            + "uniform vec2 uStep;\n"
+            + "void main() {\n"
+            + "    vec4 flow = texture(uFlow, vec2(0.5));\n"
+            + "    vec2 shift = (flow.xy - 0.5) * 48.0 * 4.0 * uStep;\n"
+            + "    vec3 warped = mix(texture(uPrev, vTexCoord - shift * uTimestep).rgb,\n"
+            + "                      texture(uNext, vTexCoord + shift * (1.0 - uTimestep)).rgb,\n"
+            + "                      uTimestep);\n"
+            + "    vec3 nearest = uTimestep < 0.5 ? texture(uPrev, vTexCoord).rgb\n"
+            + "                                   : texture(uNext, vTexCoord).rgb;\n"
+            + "    float bad = smoothstep(0.08, 0.20, flow.b);\n"
+            + "    fragColor = vec4(mix(warped, nearest, bad), 1.0);\n"
+            + "}\n";
+
     private static final float[] QUAD = {-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f};
     private static final float[] TEX_COORDS = {0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f};
 
@@ -100,6 +201,50 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private boolean newFrame;
     private boolean drawEveryVsync;
     private boolean paused;
+
+    private static final int RING = 2;
+    private static final int SEARCH_RANGE = 24;
+    private static final int SEARCH_SIZE = SEARCH_RANGE * 2 + 1;
+    private static final int MOTION_SCALE = 4;
+
+    private int lumaProgram;
+    private int searchProgram;
+    private int reduceProgram;
+    private int warpProgram;
+    private int lumaSourceHandle;
+    private int lumaTexelHandle;
+    private int searchPrevHandle;
+    private int searchNextHandle;
+    private int searchStepHandle;
+    private int reduceSearchHandle;
+    private int warpPrevHandle;
+    private int warpNextHandle;
+    private int warpFlowHandle;
+    private int warpTimestepHandle;
+    private int warpStepHandle;
+    private final int[] lumaTexture = new int[RING];
+    private int searchTexture;
+    private int flowTexture;
+    private int lumaWidth;
+    private int lumaHeight;
+    private int flowPrev = -1;
+    private int flowNext = -1;
+    private boolean flowValid;
+
+    private int simpleProgram;
+    private int simplePositionHandle;
+    private int simpleTexCoordHandle;
+    private int simpleTextureHandle;
+    private final int[] frameTexture = new int[RING];
+    private final int[] frameFbo = new int[1];
+    private final long[] framePts = new long[RING];
+    private int writeIndex = RING - 1;
+    private int frameCount;
+    private int videoWidth;
+    private int videoHeight;
+    private long clockOffsetNs;
+    private long intervalNs = 41_666_667L;
+    private long lastPtsNs;
 
     private long draws;
     private long vsyncs;
@@ -223,6 +368,15 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             fail("shader");
             return;
         }
+        if (!buildSimpleProgram()) {
+            fail("shader");
+            return;
+        }
+        if (!buildMotionPrograms()) {
+            fail("shader");
+            return;
+        }
+        GLES20.glGenFramebuffers(1, frameFbo, 0);
         GLES20.glDisable(GLES20.GL_DEPTH_TEST);
         GLES20.glDisable(GLES20.GL_BLEND);
 
@@ -244,6 +398,9 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         inputSurface = new Surface(inputTexture);
         Matrix.setIdentityM(texMatrix, 0);
         glReady = true;
+        if (videoWidth > 0 && videoHeight > 0) {
+            resizeFrames(videoWidth, videoHeight);
+        }
 
         mainHandler.post(() -> {
             if (!released) {
@@ -261,22 +418,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     }
 
     private boolean buildProgram() {
-        int vertex = compileShader(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER);
-        int fragment = compileShader(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER);
-        if (vertex == 0 || fragment == 0) {
-            return false;
-        }
-        program = GLES20.glCreateProgram();
-        GLES20.glAttachShader(program, vertex);
-        GLES20.glAttachShader(program, fragment);
-        GLES20.glLinkProgram(program);
-        int[] status = new int[1];
-        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, status, 0);
-        GLES20.glDeleteShader(vertex);
-        GLES20.glDeleteShader(fragment);
-        if (status[0] == 0) {
-            GLES20.glDeleteProgram(program);
-            program = 0;
+        program = linkProgram(VERTEX_SHADER, FRAGMENT_SHADER);
+        if (program == 0) {
             return false;
         }
         positionHandle = GLES20.glGetAttribLocation(program, "aPosition");
@@ -284,6 +427,66 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         texMatrixHandle = GLES20.glGetUniformLocation(program, "uTexMatrix");
         textureHandle = GLES20.glGetUniformLocation(program, "uTexture");
         return true;
+    }
+
+    private boolean buildSimpleProgram() {
+        simpleProgram = linkProgram(SIMPLE_VERTEX_SHADER, SIMPLE_FRAGMENT_SHADER);
+        if (simpleProgram == 0) {
+            return false;
+        }
+        simplePositionHandle = GLES20.glGetAttribLocation(simpleProgram, "aPosition");
+        simpleTexCoordHandle = GLES20.glGetAttribLocation(simpleProgram, "aTexCoord");
+        simpleTextureHandle = GLES20.glGetUniformLocation(simpleProgram, "uTexture");
+        return true;
+    }
+
+    private boolean buildMotionPrograms() {
+        lumaProgram = linkProgram(GLSL_VERTEX_SHADER, LUMA_FRAGMENT_SHADER);
+        searchProgram = linkProgram(GLSL_VERTEX_SHADER, SEARCH_FRAGMENT_SHADER);
+        reduceProgram = linkProgram(GLSL_VERTEX_SHADER, REDUCE_FRAGMENT_SHADER);
+        warpProgram = linkProgram(GLSL_VERTEX_SHADER, WARP_FRAGMENT_SHADER);
+        if (lumaProgram == 0 || searchProgram == 0 || reduceProgram == 0 || warpProgram == 0) {
+            return false;
+        }
+        lumaSourceHandle = uniform(lumaProgram, "uSource");
+        lumaTexelHandle = uniform(lumaProgram, "uTexel");
+        searchPrevHandle = uniform(searchProgram, "uPrev");
+        searchNextHandle = uniform(searchProgram, "uNext");
+        searchStepHandle = uniform(searchProgram, "uStep");
+        reduceSearchHandle = uniform(reduceProgram, "uSearch");
+        warpPrevHandle = uniform(warpProgram, "uPrev");
+        warpNextHandle = uniform(warpProgram, "uNext");
+        warpFlowHandle = uniform(warpProgram, "uFlow");
+        warpTimestepHandle = uniform(warpProgram, "uTimestep");
+        warpStepHandle = uniform(warpProgram, "uStep");
+        return true;
+    }
+
+    private static int uniform(int program, String name) {
+        return GLES20.glGetUniformLocation(program, name);
+    }
+
+    private int linkProgram(String vertexSource, String fragmentSource) {
+        int vertex = compileShader(GLES20.GL_VERTEX_SHADER, vertexSource);
+        int fragment = compileShader(GLES20.GL_FRAGMENT_SHADER, fragmentSource);
+        if (vertex == 0 || fragment == 0) {
+            return 0;
+        }
+        int linked = GLES20.glCreateProgram();
+        GLES20.glBindAttribLocation(linked, 0, "aPosition");
+        GLES20.glBindAttribLocation(linked, 1, "aTexCoord");
+        GLES20.glAttachShader(linked, vertex);
+        GLES20.glAttachShader(linked, fragment);
+        GLES20.glLinkProgram(linked);
+        int[] status = new int[1];
+        GLES20.glGetProgramiv(linked, GLES20.GL_LINK_STATUS, status, 0);
+        GLES20.glDeleteShader(vertex);
+        GLES20.glDeleteShader(fragment);
+        if (status[0] == 0) {
+            GLES20.glDeleteProgram(linked);
+            return 0;
+        }
+        return linked;
     }
 
     private static int compileShader(int type, String source) {
@@ -351,6 +554,30 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             GLES20.glDeleteProgram(program);
             program = 0;
         }
+        if (simpleProgram != 0) {
+            GLES20.glDeleteProgram(simpleProgram);
+            simpleProgram = 0;
+        }
+        int[] programs = {lumaProgram, searchProgram, reduceProgram, warpProgram};
+        for (int id : programs) {
+            if (id != 0) {
+                GLES20.glDeleteProgram(id);
+            }
+        }
+        lumaProgram = 0;
+        searchProgram = 0;
+        reduceProgram = 0;
+        warpProgram = 0;
+        if (frameTexture[0] != 0) {
+            GLES20.glDeleteTextures(RING, frameTexture, 0);
+            GLES20.glDeleteTextures(RING, lumaTexture, 0);
+            GLES20.glDeleteTextures(1, new int[]{searchTexture}, 0);
+            GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
+        }
+        if (frameFbo[0] != 0) {
+            GLES20.glDeleteFramebuffers(1, frameFbo, 0);
+            frameFbo[0] = 0;
+        }
         if (textureId != 0) {
             GLES20.glDeleteTextures(1, new int[]{textureId}, 0);
             textureId = 0;
@@ -384,9 +611,188 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         } catch (RuntimeException error) {
             return;
         }
+        long pts = inputTexture.getTimestamp();
+        if (pts > 0) {
+            trackClock(pts);
+        }
+        if (drawEveryVsync && videoWidth > 0 && videoHeight > 0) {
+            writeIndex = (writeIndex + 1) % RING;
+            copyToFrame(writeIndex);
+            framePts[writeIndex] = pts;
+            if (frameCount < RING) {
+                frameCount++;
+            }
+            if (frameCount >= 2) {
+                flowValid = false;
+                estimateMotion((writeIndex - 1 + RING) % RING, writeIndex);
+            }
+        }
         hasFrame = true;
         newFrame = true;
         sourceCount++;
+    }
+
+    private void trackClock(long pts) {
+        long offset = System.nanoTime() - pts;
+        if (clockOffsetNs == 0 || Math.abs(offset - clockOffsetNs) > 500_000_000L) {
+            clockOffsetNs = offset;
+        } else {
+            clockOffsetNs += (offset - clockOffsetNs) / 32;
+        }
+        if (lastPtsNs > 0) {
+            long delta = pts - lastPtsNs;
+            if (delta > 1_000_000L && delta < 500_000_000L) {
+                intervalNs += (delta - intervalNs) / 8;
+            }
+        }
+        lastPtsNs = pts;
+    }
+
+    private void copyToFrame(int index) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, frameTexture[index], 0);
+        GLES20.glViewport(0, 0, videoWidth, videoHeight);
+        GLES20.glClearColor(0f, 0f, 0f, 1f);
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+        drawQuad(program, positionHandle, texCoordHandle,
+                GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId, textureHandle,
+                texMatrixHandle, texMatrix);
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        renderLuma(index);
+    }
+
+    private void renderLuma(int index) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, lumaTexture[index], 0);
+        GLES20.glViewport(0, 0, lumaWidth, lumaHeight);
+        GLES20.glUseProgram(lumaProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTexture[index]);
+        GLES20.glUniform1i(lumaSourceHandle, 0);
+        GLES20.glUniform2f(lumaTexelHandle, 1f / videoWidth, 1f / videoHeight);
+        drawFullQuad();
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+    }
+
+    private void estimateMotion(int prev, int next) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, searchTexture, 0);
+        GLES20.glViewport(0, 0, SEARCH_SIZE, SEARCH_SIZE);
+        GLES20.glUseProgram(searchProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[prev]);
+        GLES20.glUniform1i(searchPrevHandle, 0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lumaTexture[next]);
+        GLES20.glUniform1i(searchNextHandle, 1);
+        GLES20.glUniform2f(searchStepHandle, 1f / lumaWidth, 1f / lumaHeight);
+        drawFullQuad();
+
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
+                GLES20.GL_TEXTURE_2D, flowTexture, 0);
+        GLES20.glViewport(0, 0, 1, 1);
+        GLES20.glUseProgram(reduceProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, searchTexture);
+        GLES20.glUniform1i(reduceSearchHandle, 0);
+        drawFullQuad();
+
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        flowPrev = prev;
+        flowNext = next;
+        flowValid = true;
+    }
+
+    private void drawFullQuad() {
+        GLES20.glEnableVertexAttribArray(0);
+        GLES20.glVertexAttribPointer(0, 2, GLES20.GL_FLOAT, false, 0, quadBuffer);
+        GLES20.glEnableVertexAttribArray(1);
+        GLES20.glVertexAttribPointer(1, 2, GLES20.GL_FLOAT, false, 0, texCoordBuffer);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+        GLES20.glDisableVertexAttribArray(0);
+        GLES20.glDisableVertexAttribArray(1);
+    }
+
+    public void setVideoSize(int width, int height) {
+        handler.post(() -> resizeFrames(width, height));
+    }
+
+    private void resizeFrames(int width, int height) {
+        if (width == videoWidth && height == videoHeight && frameTexture[0] != 0) {
+            return;
+        }
+        if (frameTexture[0] != 0) {
+            GLES20.glDeleteTextures(RING, frameTexture, 0);
+            GLES20.glDeleteTextures(RING, lumaTexture, 0);
+            GLES20.glDeleteTextures(1, new int[]{searchTexture}, 0);
+            GLES20.glDeleteTextures(1, new int[]{flowTexture}, 0);
+        }
+        videoWidth = width;
+        videoHeight = height;
+        frameCount = 0;
+        writeIndex = RING - 1;
+        lastPtsNs = 0;
+        flowValid = false;
+        flowPrev = -1;
+        flowNext = -1;
+        if (width <= 0 || height <= 0 || !glReady) {
+            return;
+        }
+        lumaWidth = Math.max(1, width / MOTION_SCALE);
+        lumaHeight = Math.max(1, height / MOTION_SCALE);
+        GLES20.glGenTextures(RING, frameTexture, 0);
+        for (int texture : frameTexture) {
+            bindSimpleTexture(texture);
+            GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height,
+                    0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        }
+        GLES20.glGenTextures(RING, lumaTexture, 0);
+        for (int texture : lumaTexture) {
+            bindSimpleTexture(texture);
+            GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES30.GL_R8, lumaWidth, lumaHeight,
+                    0, GLES30.GL_RED, GLES20.GL_UNSIGNED_BYTE, null);
+        }
+        int[] generated = new int[1];
+        GLES20.glGenTextures(1, generated, 0);
+        searchTexture = generated[0];
+        bindSimpleTexture(searchTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, SEARCH_SIZE, SEARCH_SIZE,
+                0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+        GLES20.glGenTextures(1, generated, 0);
+        flowTexture = generated[0];
+        bindSimpleTexture(flowTexture);
+        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 1, 1,
+                0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+    }
+
+    private static void bindSimpleTexture(int texture) {
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,
+                GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,
+                GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,
+                GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,
+                GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+    }
+
+    private int frameForTime(long contentNs) {
+        int best = -1;
+        long bestDelta = Long.MAX_VALUE;
+        int valid = Math.min(frameCount, RING);
+        for (int n = 0; n < valid; n++) {
+            int index = (writeIndex - n + RING) % RING;
+            long delta = Math.abs(framePts[index] - contentNs);
+            if (delta < bestDelta) {
+                bestDelta = delta;
+                best = index;
+            }
+        }
+        return best;
     }
 
     @Override
@@ -413,21 +819,46 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glClearColor(0f, 0f, 0f, 1f);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
-        GLES20.glUseProgram(program);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId);
-        GLES20.glUniform1i(textureHandle, 0);
-        GLES20.glUniformMatrix4fv(texMatrixHandle, 1, false, texMatrix, 0);
-
-        GLES20.glEnableVertexAttribArray(positionHandle);
-        GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 0,
-                quadBuffer);
-        GLES20.glEnableVertexAttribArray(texCoordHandle);
-        GLES20.glVertexAttribPointer(texCoordHandle, 2, GLES20.GL_FLOAT, false, 0,
-                texCoordBuffer);
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
-        GLES20.glDisableVertexAttribArray(positionHandle);
-        GLES20.glDisableVertexAttribArray(texCoordHandle);
+        boolean drawn = false;
+        if (drawEveryVsync && frameCount > 0 && clockOffsetNs != 0) {
+            long contentNs = frameTimeNanos - clockOffsetNs - delayNs();
+            int before = -1;
+            int after = -1;
+            int valid = Math.min(frameCount, RING);
+            for (int n = 0; n < valid; n++) {
+                int index = (writeIndex - n + RING) % RING;
+                long pts = framePts[index];
+                if (pts <= contentNs && (before < 0 || pts > framePts[before])) {
+                    before = index;
+                }
+                if (pts >= contentNs && (after < 0 || pts < framePts[after])) {
+                    after = index;
+                }
+            }
+            if (before >= 0 && after >= 0 && after != before && flowValid
+                    && before == flowPrev && after == flowNext) {
+                long span = framePts[after] - framePts[before];
+                if (span > 0) {
+                    float timestep = (contentNs - framePts[before]) / (float) span;
+                    timestep = Math.max(0f, Math.min(1f, timestep));
+                    drawWarp(before, after, timestep);
+                    drawn = true;
+                }
+            }
+            if (!drawn) {
+                int frame = before >= 0 ? before : frameForTime(contentNs);
+                if (frame >= 0) {
+                    drawQuad(simpleProgram, simplePositionHandle, simpleTexCoordHandle,
+                            GLES20.GL_TEXTURE_2D, frameTexture[frame], simpleTextureHandle,
+                            -1, null);
+                    drawn = true;
+                }
+            }
+        }
+        if (!drawn) {
+            drawQuad(program, positionHandle, texCoordHandle, GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+                    textureId, textureHandle, texMatrixHandle, texMatrix);
+        }
 
         EGLExt.eglPresentationTimeANDROID(eglDisplay, eglWindow, frameTimeNanos);
         EGL14.eglSwapBuffers(eglDisplay, eglWindow);
@@ -437,6 +868,44 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         draws++;
 
         EGL14.eglMakeCurrent(eglDisplay, eglPbuffer, eglPbuffer, eglContext);
+    }
+
+    private void drawQuad(int programId, int posHandle, int coordHandle, int target,
+                          int texture, int textureHandle, int matrixHandle, float[] matrix) {
+        GLES20.glUseProgram(programId);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(target, texture);
+        GLES20.glUniform1i(textureHandle, 0);
+        if (matrixHandle >= 0) {
+            GLES20.glUniformMatrix4fv(matrixHandle, 1, false, matrix, 0);
+        }
+        GLES20.glEnableVertexAttribArray(posHandle);
+        GLES20.glVertexAttribPointer(posHandle, 2, GLES20.GL_FLOAT, false, 0, quadBuffer);
+        GLES20.glEnableVertexAttribArray(coordHandle);
+        GLES20.glVertexAttribPointer(coordHandle, 2, GLES20.GL_FLOAT, false, 0, texCoordBuffer);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+        GLES20.glDisableVertexAttribArray(posHandle);
+        GLES20.glDisableVertexAttribArray(coordHandle);
+    }
+
+    private void drawWarp(int prev, int next, float timestep) {
+        GLES20.glUseProgram(warpProgram);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTexture[prev]);
+        GLES20.glUniform1i(warpPrevHandle, 0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTexture[next]);
+        GLES20.glUniform1i(warpNextHandle, 1);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, flowTexture);
+        GLES20.glUniform1i(warpFlowHandle, 2);
+        GLES20.glUniform1f(warpTimestepHandle, timestep);
+        GLES20.glUniform2f(warpStepHandle, 1f / videoWidth, 1f / videoHeight);
+        drawFullQuad();
+    }
+
+    private long delayNs() {
+        return intervalNs + 4_000_000L;
     }
 
     private static FloatBuffer buffer(float[] values) {
