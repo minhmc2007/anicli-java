@@ -152,8 +152,19 @@ public:
         const unsigned char* ffb = ffnBin.data();
         ncnn::DataReaderFromMemory ffnParamReader(ffp, ffnParam.size());
         ncnn::DataReaderFromMemory ffnBinReader(ffb, ffnBin.size());
+        auto mark = std::chrono::steady_clock::now();
         if (ffnNet.load_param(ffnParamReader)) return fail();
+        const double paramMs = std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - mark)
+                                   .count();
+        mark = std::chrono::steady_clock::now();
         if (ffnNet.load_model(ffnBinReader)) return fail();
+        const double modelMs = std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - mark)
+                                   .count();
+        __android_log_print(ANDROID_LOG_INFO, "framegen",
+                            "load param %.1f ms, model %.1f ms, %zu layers",
+                            paramMs, modelMs, ffnNet.layers().size());
         inited = true;
         return true;
     }
@@ -174,8 +185,7 @@ public:
         // Network input: capped long side, padded to the graph's 64 stride.
         const int longSide = std::max(w, h);
         int nw = w, nh = h;
-        if (longSide > MAX_NET_SIDE) {
-            nw = std::max(1, (int)std::lround((double)w * MAX_NET_SIDE / longSide));
+        if (longSide > MAX_NET_SIDE) {            nw = std::max(1, (int)std::lround((double)w * MAX_NET_SIDE / longSide));
             nh = std::max(1, (int)std::lround((double)h * MAX_NET_SIDE / longSide));
         }
         const int iw = (nw + 63) / 64 * 64, ih = (nh + 63) / 64 * 64;
@@ -281,10 +291,23 @@ private:
     }
 
     bool runFfn(const ncnn::Mat& in, std::vector<float>& out) {
+        static int calls = 0;
+        const bool log = calls++ < 10;
+        const auto started = std::chrono::steady_clock::now();
+        if (log) {
+            __android_log_print(ANDROID_LOG_INFO, "framegen",
+                                "extract start %dx%dx%d", in.w, in.h, in.c);
+        }
         ncnn::Extractor ex = ffnNet.create_extractor();
         ex.input(ffnIn.c_str(), in);
         ncnn::Mat flow;
-        if (ex.extract(ffnOut.c_str(), flow)) return false;
+        if (ex.extract(ffnOut.c_str(), flow)) {
+            __android_log_print(ANDROID_LOG_ERROR, "framegen", "extract failed");
+            return false;
+        }
+        const double ms = std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - started)
+                              .count();
         // Raw pnnx flow * 20 (demo.py); values are in padded-input px.
         out.resize((size_t)flow.w * flow.h * 2);
         for (int y = 0; y < flow.h; y++) {
@@ -294,6 +317,11 @@ private:
                 out[((size_t)y * flow.w + x) * 2 + 1] =
                     flow.channel(1).row(y)[x] * 20.f;
             }
+        }
+        if (log) {
+            __android_log_print(ANDROID_LOG_INFO, "framegen",
+                                "extract %dx%d -> %dx%d: %.1f ms", in.w, in.h,
+                                flow.w, flow.h, ms);
         }
         return true;
     }

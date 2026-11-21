@@ -14,6 +14,7 @@ import android.opengl.Matrix;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Choreographer;
 import android.view.Surface;
 import android.view.SurfaceHolder;
@@ -477,6 +478,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private HandlerThread ncnnThread;
     private Handler ncnnHandler;
     private boolean ncnnBusy;
+    private boolean busyWarned;
+    private long busyStartNs;
 
     private volatile TextView debugView;
     private String deviceName = "";
@@ -1177,6 +1180,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         }
         if (ncnnBusy) {
             winSkip++;
+            final long busyMs = (System.nanoTime() - busyStartNs) / 1_000_000L;
+            if (busyMs > 2000 && !busyWarned) {
+                busyWarned = true;
+                Log.w("framegen", "inference busy " + busyMs + " ms");
+            }
             return;
         }
         flowValid = false;
@@ -1196,14 +1204,24 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         readbackTexture(next, false);
         readbackMs = (System.nanoTime() - readbackStart) / 1_000_000f;
         ncnnBusy = true;
+        busyStartNs = System.nanoTime();
         if (!ncnnHandler.post(() -> {
-            boolean ok = ensureNcnn()
-                    && ncnnEngine.ffnFlow(readbackA, readbackC, w, h, flow, sad);
-            float ms = ok ? ncnnEngine.lastInferMs() : 0f;
-            int[] net = ok ? ncnnEngine.netSize() : null;
-            String dev = ncnnEngine != null ? ncnnEngine.deviceName() : "";
-            handler.post(() -> applyNcnnMotion(prev, next, w, h, flow, sad, ok,
-                    ms, net, dev));
+            final long started = System.nanoTime();
+            boolean ok = false;
+            try {
+                ok = ensureNcnn()
+                        && ncnnEngine.ffnFlow(readbackA, readbackC, w, h, flow, sad);
+            } catch (Throwable error) {
+                Log.e("framegen", "inference crashed", error);
+            }
+            final boolean result = ok;
+            final float attemptMs = (System.nanoTime() - started) / 1_000_000f;
+            final int[] net = result ? ncnnEngine.netSize() : null;
+            final String dev = ncnnEngine != null ? ncnnEngine.deviceName() : "";
+            Log.i("framegen", String.format(Locale.US, "infer %s %.1f ms",
+                    result ? "ok" : "failed", attemptMs));
+            handler.post(() -> applyNcnnMotion(prev, next, w, h, flow, sad, result,
+                    attemptMs, net, dev));
         })) {
             ncnnBusy = false;
         }
@@ -1214,20 +1232,20 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                                  float[] flow, float[] sad, boolean ok,
                                  float ms, int[] net, String dev) {
         ncnnBusy = false;
+        busyWarned = false;
         if (released) {
             return;
         }
         if (!dev.isEmpty()) {
             deviceName = dev;
         }
-        if (ok) {
-            inferLastMs = ms;
-            inferAvgMs = inferAvgMs == 0f ? ms : inferAvgMs * 0.9f + ms * 0.1f;
-            if (net != null && net.length == 2) {
-                netWidth = net[0];
-                netHeight = net[1];
-            }
-        } else {
+        inferLastMs = ms;
+        inferAvgMs = inferAvgMs == 0f ? ms : inferAvgMs * 0.9f + ms * 0.1f;
+        if (net != null && net.length == 2) {
+            netWidth = net[0];
+            netHeight = net[1];
+        }
+        if (!ok) {
             inferFail++;
         }
         if (ncnnEngine == null || !ncnnEngine.available) {
@@ -1298,7 +1316,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     /** Lazy-load the ncnn engine on the inference thread. */
     private boolean ensureNcnn() {
         if (ncnnEngine == null) {
+            final long started = System.nanoTime();
             ncnnEngine = new NcnnFrameEngine(view.getContext());
+            Log.i("framegen", String.format(Locale.US, "engine init %s in %.0f ms",
+                    ncnnEngine.available ? "ok" : "failed",
+                    (System.nanoTime() - started) / 1e6f));
         }
         return ncnnEngine.available;
     }
@@ -1726,17 +1748,21 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         final int outFps = (int) Math.round(drawn / sec);
         final int inFps = (int) Math.round(decoded / sec);
         final int warpPct = drawn == 0 ? 0 : (int) (warp * 100 / drawn);
+        final String busy = ncnnBusy
+                ? String.format(Locale.US, "%.1fs",
+                        (System.nanoTime() - busyStartNs) / 1e9)
+                : "-";
         final String text = String.format(Locale.US,
                 "%s · %s\nsrc %dx%d · net %dx%d\n"
                         + "infer %.1f ms avg %.1f · readback %.1f\n"
-                        + "fail %d stale %d skip %d\n"
+                        + "fail %d stale %d skip %d · busy %s\n"
                         + "out %d fps · in %d fps · warp %d%%\n"
                         + "target %d",
                 Settings.FRAME_GEN_ENGINE_GL.equals(engine) ? "GL" : "FFN",
                 deviceName.isEmpty() ? "no GPU" : deviceName,
                 videoWidth, videoHeight, netWidth, netHeight,
                 inferLastMs, inferAvgMs, readbackMs,
-                fail, stale, skipped,
+                fail, stale, skipped, busy,
                 outFps, inFps, warpPct, targetFps);
         mainHandler.post(() -> view.setText(text));
     }
