@@ -15,13 +15,19 @@ import java.util.List;
 
 public final class HistoryStore {
     private static final String PREFS = "anicli_history";
+    private static final String ADULT_PREFS = "anicli_history_adult";
     private static final String KEY = "items";
     private static final int MAX_ENTRIES = 100;
 
     private final SharedPreferences preferences;
 
     public HistoryStore(Context context) {
-        this.preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        this(context, false);
+    }
+
+    public HistoryStore(Context context, boolean adult) {
+        this.preferences = context.getSharedPreferences(adult ? ADULT_PREFS : PREFS,
+                Context.MODE_PRIVATE);
     }
 
     public synchronized List<HistoryEntry> getAll() {

@@ -13,12 +13,18 @@ import java.util.List;
 
 public final class FavouriteStore {
     private static final String PREFS = "anicli_favourites";
+    private static final String ADULT_PREFS = "anicli_favourites_adult";
     private static final String KEY = "items";
 
     private final SharedPreferences preferences;
 
     public FavouriteStore(Context context) {
-        this.preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        this(context, false);
+    }
+
+    public FavouriteStore(Context context, boolean adult) {
+        this.preferences = context.getSharedPreferences(adult ? ADULT_PREFS : PREFS,
+                Context.MODE_PRIVATE);
     }
 
     public synchronized List<Anime> getAll() {

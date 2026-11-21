@@ -112,7 +112,7 @@ public final class ImageLoader {
 
         if (bytes == null) {
             try {
-                CronetHttp.Response response = http.get(url, headers, false);
+                CronetHttp.Response response = http.get(url, headersFor(url), false);
                 if (response.isSuccessful() && response.body.length > 0) {
                     bytes = response.body;
                     writeFile(file, bytes);
@@ -132,6 +132,15 @@ public final class ImageLoader {
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inPreferredConfig = Bitmap.Config.RGB_565;
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+    }
+
+    private Map<String, String> headersFor(String url) {
+        if (url.contains("watchhentai.net")) {
+            Map<String, String> h = new HashMap<>(headers);
+            h.put("Referer", "https://watchhentai.net/");
+            return h;
+        }
+        return headers;
     }
 
     private File cacheFile(String url) {

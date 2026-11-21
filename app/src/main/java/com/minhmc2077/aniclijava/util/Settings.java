@@ -45,7 +45,9 @@ public final class Settings {
 
     public static final String SOURCE_HIANIME = "hianime";
     public static final String SOURCE_MKISSA = "mkissa";
+    public static final String SOURCE_WATCHHENTAI = "watchhentai";
     public static final String MKISSA_ID_PREFIX = "mk:";
+    public static final String WATCHHENTAI_ID_PREFIX = "wh:";
 
     public static final String[] ACCENT_KEYS = {
             ACCENT_BLUE, ACCENT_INDIGO, ACCENT_TEAL,
@@ -160,18 +162,34 @@ public final class Settings {
 
     public static String animeSource(Context context) {
         String source = prefs(context).getString(KEY_ANIME_SOURCE, SOURCE_HIANIME);
-        return SOURCE_MKISSA.equals(source) ? SOURCE_MKISSA : SOURCE_HIANIME;
+        if (SOURCE_MKISSA.equals(source) || SOURCE_WATCHHENTAI.equals(source)) {
+            return source;
+        }
+        return SOURCE_HIANIME;
     }
 
     public static void setAnimeSource(Context context, String source) {
-        prefs(context).edit().putString(KEY_ANIME_SOURCE,
-                SOURCE_MKISSA.equals(source) ? SOURCE_MKISSA : SOURCE_HIANIME).apply();
+        String value = SOURCE_MKISSA.equals(source) || SOURCE_WATCHHENTAI.equals(source)
+                ? source
+                : SOURCE_HIANIME;
+        prefs(context).edit().putString(KEY_ANIME_SOURCE, value).apply();
     }
 
     public static String sourceOf(String animeId) {
+        if (isAdultId(animeId)) {
+            return SOURCE_WATCHHENTAI;
+        }
         return animeId != null && animeId.startsWith(MKISSA_ID_PREFIX)
                 ? SOURCE_MKISSA
                 : SOURCE_HIANIME;
+    }
+
+    public static boolean isAdultSource(String source) {
+        return SOURCE_WATCHHENTAI.equals(source);
+    }
+
+    public static boolean isAdultId(String animeId) {
+        return animeId != null && animeId.startsWith(WATCHHENTAI_ID_PREFIX);
     }
 
     public static void applyAccent(Activity activity) {

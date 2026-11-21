@@ -26,7 +26,7 @@ public final class AiringAlarm {
      */
     public static void sync(Context context) {
         boolean tracked = App.get().airing().hasSubscriptions()
-                || !App.get().favourites().getAll().isEmpty();
+                || !App.get().normalFavourites().getAll().isEmpty();
         if (tracked) {
             schedule(context);
         } else {

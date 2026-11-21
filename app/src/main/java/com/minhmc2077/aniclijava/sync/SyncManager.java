@@ -259,12 +259,12 @@ public final class SyncManager {
 
     private LinkedHashMap<String, Candidate> candidates() {
         LinkedHashMap<String, Candidate> candidates = new LinkedHashMap<>();
-        for (HistoryEntry entry : app.history().getAll()) {
+        for (HistoryEntry entry : app.normalHistory().getAll()) {
             Candidate candidate = new Candidate(entry.animeId, entry.title, entry.posterUrl);
             candidate.history = entry;
             candidates.put(entry.animeId, candidate);
         }
-        for (Anime anime : app.favourites().getAll()) {
+        for (Anime anime : app.normalFavourites().getAll()) {
             if (!candidates.containsKey(anime.id)) {
                 candidates.put(anime.id, new Candidate(anime.id, anime.title, anime.posterUrl));
             }
@@ -332,7 +332,7 @@ public final class SyncManager {
             return false;
         }
 
-        HistoryEntry existing = app.history().latestForAnime(candidate.animeId);
+        HistoryEntry existing = app.normalHistory().latestForAnime(candidate.animeId);
         if (existing != null && Math.abs(EpisodeNumbers.value(existing.episodeNumber)
                 - entry.progress) < 0.0001d) {
             return false;
@@ -342,9 +342,9 @@ public final class SyncManager {
             title = entry.titles.isEmpty() ? "" : entry.titles.get(0);
         }
         String mode = existing == null ? "sub" : existing.mode;
-        app.history().upsert(candidate.animeId, title, candidate.poster,
+        app.normalHistory().upsert(candidate.animeId, title, candidate.poster,
                 target.number, target.id, mode, 0L);
-        candidate.history = app.history().latestForAnime(candidate.animeId);
+        candidate.history = app.normalHistory().latestForAnime(candidate.animeId);
         return true;
     }
 

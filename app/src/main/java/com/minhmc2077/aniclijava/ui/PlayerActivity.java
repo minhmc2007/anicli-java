@@ -288,6 +288,9 @@ public final class PlayerActivity extends BaseActivity {
             episodeNumber = "";
         }
         mode = "dub".equalsIgnoreCase(requestedMode) ? "dub" : "sub";
+        if (com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId)) {
+            mode = "sub";
+        }
         episode = new Episode(episodeNumber, episodeId);
 
         findViewById(R.id.back_button).setOnClickListener(v -> finish());
@@ -302,6 +305,9 @@ public final class PlayerActivity extends BaseActivity {
             }
         });
         modeButton.setOnClickListener(v -> toggleMode());
+        if (com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId)) {
+            modeButton.setVisibility(View.GONE);
+        }
         qualityButton.setOnClickListener(v -> showQualityMenu());
         skipButton.setOnClickListener(v -> skipCurrent());
         downloadButton.setOnClickListener(v -> downloadNextEpisode(true));
@@ -495,7 +501,7 @@ public final class PlayerActivity extends BaseActivity {
                         return;
                     }
                     if (!retriedOnline) {
-                        StreamInfo cached = App.get().offline().stream(
+                        StreamInfo cached = App.get().offlineFor(animeId).stream(
                                 animeId, requestedEpisode.number, requestedMode);
                         if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
                             playingOffline = true;
@@ -518,7 +524,7 @@ public final class PlayerActivity extends BaseActivity {
         Download download = EpisodeDownloads.download(animeId, target.number, targetMode);
         boolean completed = download != null && download.state == Download.STATE_COMPLETED;
         if (preferOffline && completed) {
-            StreamInfo cached = App.get().offline().stream(animeId, target.number, targetMode);
+            StreamInfo cached = App.get().offlineFor(animeId).stream(animeId, target.number, targetMode);
             if (cached != null && !TextUtils.isEmpty(cached.masterUrl)) {
                 return new ResolvedStream(cached, true);
             }
@@ -528,14 +534,14 @@ public final class PlayerActivity extends BaseActivity {
             StreamInfo info = App.get().mkissa().streamFromUrl(
                     animeId, target, targetMode, verifiedUrl);
             if (download == null) {
-                App.get().offline().putStream(animeId, target.number, targetMode, info);
+                App.get().offlineFor(animeId).putStream(animeId, target.number, targetMode, info);
             }
             return new ResolvedStream(info, false);
         }
         StreamInfo info = App.get().animeSource(animeId)
                 .resolveStream(animeId, target, targetMode);
         if (download == null) {
-            App.get().offline().putStream(animeId, target.number, targetMode, info);
+            App.get().offlineFor(animeId).putStream(animeId, target.number, targetMode, info);
         }
         return new ResolvedStream(info, false);
     }
@@ -633,7 +639,7 @@ public final class PlayerActivity extends BaseActivity {
             startMs = pendingSeekMs;
             pendingSeekMs = -1L;
         } else {
-            HistoryEntry history = App.get().history().find(animeId, episode.number);
+            HistoryEntry history = App.get().historyFor(animeId).find(animeId, episode.number);
             startMs = history == null ? 0L : Math.max(0L, history.positionMs);
         }
         resumePositionMs = startMs;
@@ -643,16 +649,21 @@ public final class PlayerActivity extends BaseActivity {
         player.prepare();
         player.setPlayWhenReady(true);
 
-        App.get().history().upsert(animeId, animeTitle, posterUrl, episode.number,
+        App.get().historyFor(animeId).upsert(animeId, animeTitle, posterUrl, episode.number,
                 episode.id, mode, startMs);
         if (!episode.id.equals(lastSyncedEpisodeId)) {
             lastSyncedEpisodeId = episode.id;
-            App.get().sync().pushEpisode(animeId, animeTitle, episode.number, false);
+            if (!com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId)) {
+                App.get().sync().pushEpisode(animeId, animeTitle, episode.number, false);
+            }
         }
         refreshNextDownload();
     }
 
     private void loadSkipTimes() {
+        if (com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId)) {
+            return;
+        }
         if (skipButtonMode == com.minhmc2077.aniclijava.util.Settings.SKIP_OFF || player == null || episode == null) {
             return;
         }
@@ -1145,11 +1156,13 @@ public final class PlayerActivity extends BaseActivity {
     }
 
     private void onPlaybackEnded() {
-        App.get().history().updatePosition(animeId, episode.number, 0L);
+        App.get().historyFor(animeId).updatePosition(animeId, episode.number, 0L);
         if (episodeIndex >= 0 && episodeIndex + 1 < episodes.size()) {
             playEpisode(episodes.get(episodeIndex + 1));
         } else {
-            App.get().sync().pushEpisode(animeId, animeTitle, episode.number, true);
+            if (!com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId)) {
+                App.get().sync().pushEpisode(animeId, animeTitle, episode.number, true);
+            }
             showFinished();
         }
     }
@@ -1385,7 +1398,7 @@ public final class PlayerActivity extends BaseActivity {
         if (position < 0) {
             return;
         }
-        App.get().history().updatePosition(animeId, episode.number, position);
+        App.get().historyFor(animeId).updatePosition(animeId, episode.number, position);
     }
 
     @Override

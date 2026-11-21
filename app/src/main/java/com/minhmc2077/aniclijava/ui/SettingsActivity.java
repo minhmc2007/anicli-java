@@ -616,13 +616,59 @@ public final class SettingsActivity extends BaseActivity {
 
     private void setUpSource() {
         RadioGroup group = findViewById(R.id.source_group);
-        group.check(Settings.SOURCE_MKISSA.equals(Settings.animeSource(this))
-                ? R.id.source_mkissa
-                : R.id.source_hianime);
-        group.setOnCheckedChangeListener((radioGroup, checkedId) ->
-                Settings.setAnimeSource(this, checkedId == R.id.source_mkissa
-                        ? Settings.SOURCE_MKISSA
-                        : Settings.SOURCE_HIANIME));
+        group.check(sourceButton(Settings.animeSource(this)));
+        group.setOnCheckedChangeListener(this::onSourceChecked);
+    }
+
+    private void onSourceChecked(RadioGroup group, int checkedId) {
+        String target = sourceFor(checkedId);
+        String current = Settings.animeSource(this);
+        if (target.equals(current)) {
+            return;
+        }
+        if (Settings.isAdultSource(target)) {
+            confirmAdultSource(group, target, current);
+        } else {
+            Settings.setAnimeSource(this, target);
+        }
+    }
+
+    private void confirmAdultSource(RadioGroup group, String target, String previous) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_source_adult_warning_title)
+                .setMessage(R.string.settings_source_adult_warning_message)
+                .setPositiveButton(R.string.settings_source_adult_warning_confirm,
+                        (dialog, which) -> Settings.setAnimeSource(this, target))
+                .setNegativeButton(android.R.string.cancel,
+                        (dialog, which) -> revertSource(group, previous))
+                .setOnCancelListener(dialog -> revertSource(group, previous))
+                .show();
+    }
+
+    private void revertSource(RadioGroup group, String previous) {
+        group.setOnCheckedChangeListener(null);
+        group.check(sourceButton(previous));
+        group.setOnCheckedChangeListener(this::onSourceChecked);
+    }
+
+    private static int sourceButton(String source) {
+        if (Settings.SOURCE_MKISSA.equals(source)) {
+            return R.id.source_mkissa;
+        }
+        if (Settings.SOURCE_WATCHHENTAI.equals(source)) {
+            return R.id.source_watchhentai;
+        }
+        return R.id.source_hianime;
+    }
+
+    private static String sourceFor(int buttonId) {
+        if (buttonId == R.id.source_mkissa) {
+            return Settings.SOURCE_MKISSA;
+        }
+        if (buttonId == R.id.source_watchhentai) {
+            return Settings.SOURCE_WATCHHENTAI;
+        }
+        return Settings.SOURCE_HIANIME;
     }
 
     private void openRepository() {

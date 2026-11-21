@@ -47,10 +47,16 @@ public final class HomeFragment extends Fragment implements Refreshable {
         super.onViewCreated(view, savedInstanceState);
 
         ((TextView) view.findViewById(R.id.header_title)).setText(R.string.home_title);
-        boolean mkissa = Settings.SOURCE_MKISSA.equals(Settings.animeSource(requireContext()));
-        ((TextView) view.findViewById(R.id.header_subtitle)).setText(mkissa
-                ? R.string.home_subtitle_mkissa
-                : R.string.home_subtitle);
+        String source = Settings.animeSource(requireContext());
+        int subtitle;
+        if (Settings.SOURCE_WATCHHENTAI.equals(source)) {
+            subtitle = R.string.home_subtitle_watchhentai;
+        } else if (Settings.SOURCE_MKISSA.equals(source)) {
+            subtitle = R.string.home_subtitle_mkissa;
+        } else {
+            subtitle = R.string.home_subtitle;
+        }
+        ((TextView) view.findViewById(R.id.header_subtitle)).setText(subtitle);
 
         swipe = view.findViewById(R.id.swipe);
         recycler = view.findViewById(R.id.recycler);
