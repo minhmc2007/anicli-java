@@ -1,16 +1,20 @@
 // framegen_ncnn.cpp - neural frame-generation engines for anicli-java.
 //
-// FastFlowNet (1.37M params): estimates bidirectional flow A->C / C->A,
-// combines symmetrically f = (f_AC - f_CA)/2 (the benchmark's +4.9 dB win),
-// and returns it on the quarter-luma grid in FULL-RES pixel units plus a
-// per-grid-point alignment residual (SAD 0-1) for the occlusion fallback.
-// The existing GL warp/blend shader consumes both unchanged.
+// FastFlowNet (1.37M params): estimates flow A->C from the 6-channel pair
+// (frame A in ch 0-2, frame C in ch 3-5), and returns it on the quarter-luma
+// grid in FULL-RES pixel units plus a per-grid-point alignment residual
+// (SAD 0-1) for the occlusion fallback. The existing GL warp/blend shader
+// consumes both unchanged.
+//
+// The network runs at a capped resolution (MAX_NET_SIDE). At native video
+// size the graph's 1826 layers saturate a mobile GPU and stall playback.
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
 #include <android/log.h>
 #include <jni.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -22,6 +26,11 @@
 #include "datareader.h"
 
 namespace {
+
+// Flow resolution cap for the network's long side. FastFlowNet's cost is
+// dominated by the full- and half-res pyramid levels; 640 keeps the flow
+// grid detailed enough for the quarter-luma output while staying realtime.
+const int MAX_NET_SIDE = 640;
 
 float clampf(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
@@ -55,6 +64,13 @@ float sampleRgba(const unsigned char* img, int w, int h, int channel,
     const float v01 = img[s + p], v11 = img[s + o + p];
     return (v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) +
             v01 * (1 - fx) * fy + v11 * fx * fy) / 255.f;
+}
+
+// Bilinear luma from an interleaved RGBA byte image, normalized to 0-1.
+float sampleLuma(const unsigned char* img, int w, int h, float x, float y) {
+    return 0.299f * sampleRgba(img, w, h, 0, x, y) +
+           0.587f * sampleRgba(img, w, h, 1, x, y) +
+           0.114f * sampleRgba(img, w, h, 2, x, y);
 }
 
 // Parse the first Input blob name and the final output blob name from a
@@ -168,7 +184,15 @@ public:
     bool ffnFlow(const unsigned char* rgbaA, const unsigned char* rgbaC,
                  int w, int h, std::vector<float>& flow,
                  std::vector<float>& sad) {
-        const int ih = (h + 63) / 64 * 64, iw = (w + 63) / 64 * 64;
+        const auto started = std::chrono::steady_clock::now();
+        // Network input: capped long side, padded to the graph's 64 stride.
+        const int longSide = std::max(w, h);
+        int nw = w, nh = h;
+        if (longSide > MAX_NET_SIDE) {
+            nw = std::max(1, (int)std::lround((double)w * MAX_NET_SIDE / longSide));
+            nh = std::max(1, (int)std::lround((double)h * MAX_NET_SIDE / longSide));
+        }
+        const int iw = (nw + 63) / 64 * 64, ih = (nh + 63) / 64 * 64;
         // Per-channel mean over the concatenated pair in BGR order, matching
         // the channel layout fed to the network (demo.py centralize).
         double sum[3] = {0., 0., 0.};
@@ -183,28 +207,21 @@ public:
             mean[c] = (float)(sum[c] / (2.0 * w * h) / 255.0);
         }
         ncnn::Mat in;
-        std::vector<float> fa, fc;  // padded/4 grid, padded-px units
+        std::vector<float> fa;
         pairToPlanar(rgbaA, rgbaC, w, h, iw, ih, mean, in);
         if (!runFfn(in, fa)) return false;
-        pairToPlanar(rgbaC, rgbaA, w, h, iw, ih, mean, in);
-        if (!runFfn(in, fc)) return false;
         const int gw = iw / 4, gh = ih / 4;
         const int lumaW = w / 4, lumaH = h / 4;
-        const size_t gridElems = (size_t)gw * gh * 2;
-        if (fa.size() != gridElems || fc.size() != gridElems) return false;
+        if (fa.size() != (size_t)gw * gh * 2) return false;
         const float kx = (float)w / iw, ky = (float)h / ih;
         // De-interleave into x/y planes so grid resampling is a plain
         // bilinear lookup.
-        std::vector<float> fax((size_t)gw * gh), fay((size_t)gw * gh);
-        std::vector<float> fcx((size_t)gw * gh), fcy((size_t)gw * gh);
+        std::vector<float> fx((size_t)gw * gh), fy((size_t)gw * gh);
         for (size_t i = 0; i < (size_t)gw * gh; i++) {
-            fax[i] = fa[i * 2];
-            fay[i] = fa[i * 2 + 1];
-            fcx[i] = fc[i * 2];
-            fcy[i] = fc[i * 2 + 1];
+            fx[i] = fa[i * 2];
+            fy[i] = fa[i * 2 + 1];
         }
-        // Symmetric combination on the padded grid, resampled to the luma
-        // grid, rescaled from padded pixels to original pixels.
+        // Resample to the luma grid and rescale network pixels to video pixels.
         flow.resize((size_t)lumaW * lumaH * 2);
         for (int y = 0; y < lumaH; y++) {
             const float sy = lumaH == 1 ? 0.f
@@ -213,30 +230,30 @@ public:
                 const float sx = lumaW == 1 ? 0.f
                                             : (float)x * (gw - 1) / (lumaW - 1);
                 float* dst = &flow[((size_t)y * lumaW + x) * 2];
-                dst[0] =
-                    0.5f *
-                    (sampleBilinear(fax.data(), gw, gh, sx, sy) -
-                     sampleBilinear(fcx.data(), gw, gh, sx, sy)) * kx;
-                dst[1] =
-                    0.5f *
-                    (sampleBilinear(fay.data(), gw, gh, sx, sy) -
-                     sampleBilinear(fcy.data(), gw, gh, sx, sy)) * ky;
+                dst[0] = sampleBilinear(fx.data(), gw, gh, sx, sy) * kx;
+                dst[1] = sampleBilinear(fy.data(), gw, gh, sx, sy) * ky;
             }
         }
         // Alignment residual at grid points: |lumaA(g) - lumaC(g + f)|.
-        std::vector<float> la((size_t)w * h), lc((size_t)w * h);
-        lumaOf(rgbaA, w, h, la.data());
-        lumaOf(rgbaC, w, h, lc.data());
         sad.resize((size_t)lumaW * lumaH);
         for (int gy = 0; gy < lumaH; gy++) {
             for (int gx = 0; gx < lumaW; gx++) {
-                const float fx = flow[((size_t)gy * lumaW + gx) * 2];
-                const float fy = flow[((size_t)gy * lumaW + gx) * 2 + 1];
-                const float la2 = sampleBilinear(la.data(), w, h,
-                                                 gx * 4.f + fx, gy * 4.f + fy);
-                const float lc2 = lc[(size_t)(gy * 4) * w + gx * 4];
-                sad[(size_t)gy * lumaW + gx] = std::fabs(la2 - lc2) / 255.f;
+                const float dx = flow[((size_t)gy * lumaW + gx) * 2];
+                const float dy = flow[((size_t)gy * lumaW + gx) * 2 + 1];
+                const float a = sampleLuma(rgbaA, w, h,
+                                           gx * 4.f + dx, gy * 4.f + dy);
+                const float c = sampleLuma(rgbaC, w, h, gx * 4.f, gy * 4.f);
+                sad[(size_t)gy * lumaW + gx] = std::fabs(a - c);
             }
+        }
+        static int runs = 0;
+        if (runs < 5) {
+            const double ms = std::chrono::duration<double, std::milli>(
+                                  std::chrono::steady_clock::now() - started)
+                                  .count();
+            __android_log_print(ANDROID_LOG_INFO, "framegen",
+                                "ffn %dx%d -> %dx%d: %.1f ms", w, h, iw, ih, ms);
+            runs++;
         }
         return true;
     }
@@ -291,14 +308,6 @@ private:
             }
         }
         return true;
-    }
-
-    static void lumaOf(const unsigned char* rgba, int w, int h, float* out) {
-        const size_t n = (size_t)w * h;
-        for (size_t i = 0; i < n; i++) {
-            out[i] = 0.299f * rgba[i * 4] + 0.587f * rgba[i * 4 + 1] +
-                     0.114f * rgba[i * 4 + 2];
-        }
     }
 
     bool inited = false;
