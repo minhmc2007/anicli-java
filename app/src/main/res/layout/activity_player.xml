@@ -199,6 +199,22 @@
 
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/frame_gen_debug"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="58dp"
+        android:background="#99000000"
+        android:fontFamily="monospace"
+        android:lineSpacingExtra="1dp"
+        android:padding="6dp"
+        android:textColor="@android:color/white"
+        android:textSize="10sp"
+        android:visibility="gone"
+        tools:text="FFN · Samsung Xclipse 530" />
+
     <com.google.android.material.button.MaterialButton
         android:id="@+id/skip_button"
         style="@style/Widget.AniCli.Button"

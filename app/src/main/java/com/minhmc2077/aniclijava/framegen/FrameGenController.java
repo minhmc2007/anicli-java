@@ -18,6 +18,8 @@ import android.view.Choreographer;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 
@@ -475,6 +477,21 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private HandlerThread ncnnThread;
     private Handler ncnnHandler;
     private boolean ncnnBusy;
+
+    private volatile TextView debugView;
+    private String deviceName = "";
+    private float inferLastMs;
+    private float inferAvgMs;
+    private float readbackMs;
+    private long inferFail;
+    private long inferStale;
+    private int netWidth;
+    private int netHeight;
+    private long statsStartNs;
+    private long winDecoded;
+    private long winDrawn;
+    private long winWarp;
+    private long winSkip;
     private ByteBuffer readbackA;
     private ByteBuffer readbackC;
     private ByteBuffer flowUpload;
@@ -622,6 +639,14 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         handler.post(() -> targetFps = fps >= 120 ? 120 : 60);
     }
 
+    public void setDebugOverlay(@NonNull TextView debug) {
+        mainHandler.post(() -> {
+            debugView = debug;
+            debug.setVisibility(View.VISIBLE);
+        });
+        handler.post(() -> statsStartNs = 0);
+    }
+
     public void release() {
         view.getHolder().removeCallback(this);
         CountDownLatch detached = new CountDownLatch(1);
@@ -629,6 +654,9 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             released = true;
             if (choreographer != null) {
                 choreographer.removeFrameCallback(this);
+            }
+            if (debugView != null) {
+                mainHandler.post(() -> debugView.setVisibility(View.GONE));
             }
             destroyGl();
             if (ncnnHandler != null) {
@@ -1045,6 +1073,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             trackTiming(pts);
         }
         if (pts > 0 && videoWidth > 0 && videoHeight > 0) {
+            winDecoded++;
             writeIndex = (writeIndex + 1) % RING;
             copyToFrame(writeIndex);
             if (frameCount < RING) {
@@ -1143,7 +1172,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
 
     /** Read back on the GL thread, infer on the ffn thread. One run in flight. */
     private void requestNcnnMotion(int prev, int next) {
-        if (ncnnBusy || ncnnHandler == null) {
+        if (ncnnHandler == null) {
+            return;
+        }
+        if (ncnnBusy) {
+            winSkip++;
             return;
         }
         flowValid = false;
@@ -1158,13 +1191,19 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         }
         final float[] flow = ncnnFlow;
         final float[] sad = ncnnSad;
+        final long readbackStart = System.nanoTime();
         readbackTexture(prev, true);
         readbackTexture(next, false);
+        readbackMs = (System.nanoTime() - readbackStart) / 1_000_000f;
         ncnnBusy = true;
         if (!ncnnHandler.post(() -> {
             boolean ok = ensureNcnn()
                     && ncnnEngine.ffnFlow(readbackA, readbackC, w, h, flow, sad);
-            handler.post(() -> applyNcnnMotion(prev, next, w, h, flow, sad, ok));
+            float ms = ok ? ncnnEngine.lastInferMs() : 0f;
+            int[] net = ok ? ncnnEngine.netSize() : null;
+            String dev = ncnnEngine != null ? ncnnEngine.deviceName() : "";
+            handler.post(() -> applyNcnnMotion(prev, next, w, h, flow, sad, ok,
+                    ms, net, dev));
         })) {
             ncnnBusy = false;
         }
@@ -1172,10 +1211,24 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
 
     /** Publish a result only if it still matches the current pair. */
     private void applyNcnnMotion(int prev, int next, int w, int h,
-                                 float[] flow, float[] sad, boolean ok) {
+                                 float[] flow, float[] sad, boolean ok,
+                                 float ms, int[] net, String dev) {
         ncnnBusy = false;
         if (released) {
             return;
+        }
+        if (!dev.isEmpty()) {
+            deviceName = dev;
+        }
+        if (ok) {
+            inferLastMs = ms;
+            inferAvgMs = inferAvgMs == 0f ? ms : inferAvgMs * 0.9f + ms * 0.1f;
+            if (net != null && net.length == 2) {
+                netWidth = net[0];
+                netHeight = net[1];
+            }
+        } else {
+            inferFail++;
         }
         if (ncnnEngine == null || !ncnnEngine.available) {
             engine = Settings.FRAME_GEN_ENGINE_GL;
@@ -1188,6 +1241,9 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         if (!ok || prev != currentPrev || next != writeIndex
                 || w != videoWidth || h != videoHeight
                 || flow.length != lumaW * lumaH * 2) {
+            if (ok) {
+                inferStale++;
+            }
             return;
         }
         // Pack with the encoding the GL warp shader decodes.
@@ -1634,8 +1690,55 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             fail("EGL context lost");
             return;
         }
+        winDrawn++;
+        if (flowValid) {
+            winWarp++;
+        }
+        updateDebug(frameTimeNanos);
 
         EGL14.eglMakeCurrent(eglDisplay, eglPbuffer, eglPbuffer, eglContext);
+    }
+
+    /** Afterburner-style overlay: proves what the engine is actually doing. */
+    private void updateDebug(long nowNs) {
+        final TextView view = debugView;
+        if (view == null) {
+            return;
+        }
+        if (statsStartNs == 0) {
+            statsStartNs = nowNs;
+            return;
+        }
+        final long elapsed = nowNs - statsStartNs;
+        if (elapsed < 500_000_000L) {
+            return;
+        }
+        final double sec = elapsed / 1e9;
+        final long drawn = winDrawn, warp = winWarp, decoded = winDecoded;
+        final long skipped = winSkip, fail = inferFail, stale = inferStale;
+        winDrawn = 0;
+        winWarp = 0;
+        winDecoded = 0;
+        winSkip = 0;
+        inferFail = 0;
+        inferStale = 0;
+        statsStartNs = nowNs;
+        final int outFps = (int) Math.round(drawn / sec);
+        final int inFps = (int) Math.round(decoded / sec);
+        final int warpPct = drawn == 0 ? 0 : (int) (warp * 100 / drawn);
+        final String text = String.format(Locale.US,
+                "%s · %s\nsrc %dx%d · net %dx%d\n"
+                        + "infer %.1f ms avg %.1f · readback %.1f\n"
+                        + "fail %d stale %d skip %d\n"
+                        + "out %d fps · in %d fps · warp %d%%\n"
+                        + "target %d",
+                Settings.FRAME_GEN_ENGINE_GL.equals(engine) ? "GL" : "FFN",
+                deviceName.isEmpty() ? "no GPU" : deviceName,
+                videoWidth, videoHeight, netWidth, netHeight,
+                inferLastMs, inferAvgMs, readbackMs,
+                fail, stale, skipped,
+                outFps, inFps, warpPct, targetFps);
+        mainHandler.post(() -> view.setText(text));
     }
 
     private void drawQuad(int programId, int posHandle, int coordHandle, int target,

@@ -75,11 +75,31 @@ public final class NcnnFrameEngine {
         }
     }
 
+    /** Wall time of the last successful inference, in ms. */
+    public float lastInferMs() {
+        return available ? nativeLastInferMs() : 0f;
+    }
+
+    /** Padded network input size {width, height} of the last inference. */
+    public int[] netSize() {
+        return available ? nativeNetSize() : new int[2];
+    }
+
+    public String deviceName() {
+        return available ? nativeDeviceName() : "";
+    }
+
     private static native boolean nativeInit(android.content.res.AssetManager assets);
 
     private static native boolean nativeFfnFlow(ByteBuffer rgbaA, ByteBuffer rgbaC,
                                                 int w, int h, float[] outFlow,
                                                 float[] outSad);
+
+    private static native float nativeLastInferMs();
+
+    private static native int[] nativeNetSize();
+
+    private static native String nativeDeviceName();
 
     private static native void nativeClose();
 }

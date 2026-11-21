@@ -436,6 +436,7 @@ public final class PlayerActivity extends BaseActivity {
             }
         });
         frameGen.setTargetFps(com.minhmc2077.aniclijava.util.Settings.frameGenTargetFps(this));
+        frameGen.setDebugOverlay(findViewById(R.id.frame_gen_debug));
         frameGen.start();
     }
 

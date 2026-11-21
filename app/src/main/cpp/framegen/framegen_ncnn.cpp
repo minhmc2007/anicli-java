@@ -145,9 +145,9 @@ public:
         ffnNet.opt.use_vulkan_compute = true;
         // Match the RIFE engine: fp16 storage on, fp16 arithmetic off.
         ffnNet.opt.use_fp16_arithmetic = false;
+        device = ncnn::get_gpu_info(0).device_name();
         __android_log_print(ANDROID_LOG_INFO, "framegen",
-                            "FastFlowNet on Vulkan: %s",
-                            ncnn::get_gpu_info(0).device_name());
+                            "FastFlowNet on Vulkan: %s", device.c_str());
         const unsigned char* ffp = ffnParam.data();
         const unsigned char* ffb = ffnBin.data();
         ncnn::DataReaderFromMemory ffnParamReader(ffp, ffnParam.size());
@@ -230,13 +230,15 @@ public:
                 sad[(size_t)gy * lumaW + gx] = std::fabs(a - c);
             }
         }
+        netW = iw;
+        netH = ih;
+        lastMs = (float)std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - started).count();
         static int runs = 0;
         if (runs < 5) {
-            const double ms = std::chrono::duration<double, std::milli>(
-                                  std::chrono::steady_clock::now() - started)
-                                  .count();
             __android_log_print(ANDROID_LOG_INFO, "framegen",
-                                "ffn %dx%d -> %dx%d: %.1f ms", w, h, iw, ih, ms);
+                                "ffn %dx%d -> %dx%d: %.1f ms", w, h, iw, ih,
+                                lastMs);
             runs++;
         }
         return true;
@@ -295,6 +297,9 @@ private:
     ncnn::Net ffnNet;
     std::vector<unsigned char> ffnParam, ffnBin;
     std::string ffnIn, ffnOut;
+    std::string device;
+    float lastMs = 0.f;
+    int netW = 0, netH = 0;
 };
 
 FrameGenEngine g_engine;
@@ -333,6 +338,29 @@ Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeFfnFlow(
     env->SetFloatArrayRegion(outFlow, 0, (jsize)flow.size(), flow.data());
     env->SetFloatArrayRegion(outSad, 0, (jsize)sad.size(), sad.data());
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeLastInferMs(
+    JNIEnv*, jclass) {
+    return g_engine.lastMs;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeNetSize(
+    JNIEnv* env, jclass) {
+    jintArray out = env->NewIntArray(2);
+    if (out) {
+        const jint size[2] = {g_engine.netW, g_engine.netH};
+        env->SetIntArrayRegion(out, 0, 2, size);
+    }
+    return out;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeDeviceName(
+    JNIEnv* env, jclass) {
+    return env->NewStringUTF(g_engine.device.c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL
