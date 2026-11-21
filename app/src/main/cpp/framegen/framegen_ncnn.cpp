@@ -1,13 +1,5 @@
-// framegen_ncnn.cpp - neural frame-generation engines for anicli-java.
-//
-// FastFlowNet (1.37M params): estimates flow A->C from the 6-channel pair
-// (frame A in ch 0-2, frame C in ch 3-5), and returns it on the quarter-luma
-// grid in FULL-RES pixel units plus a per-grid-point alignment residual
-// (SAD 0-1) for the occlusion fallback. The existing GL warp/blend shader
-// consumes both unchanged.
-//
-// The network runs at a capped resolution (MAX_NET_SIDE). At native video
-// size the graph's 1826 layers saturate a mobile GPU and stall playback.
+// FastFlowNet flow for the GL warp engine. Input is a 6-channel BGR pair;
+// output is quarter-luma flow in video pixels plus a SAD residual.
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
 #include <android/log.h>
@@ -27,9 +19,7 @@
 
 namespace {
 
-// Flow resolution cap for the network's long side. FastFlowNet's cost is
-// dominated by the full- and half-res pyramid levels; 640 keeps the flow
-// grid detailed enough for the quarter-luma output while staying realtime.
+// Long-side cap for the network input; full-res saturates mobile GPUs.
 const int MAX_NET_SIDE = 640;
 
 float clampf(float v, float lo, float hi) {
@@ -49,7 +39,7 @@ float sampleBilinear(const float* img, int w, int h, float x, float y) {
            v01 * (1 - fx) * fy + v11 * fx * fy;
 }
 
-// Bilinear sample one BGR channel from an interleaved RGBA byte image.
+// Bilinear BGR sample from interleaved RGBA.
 float sampleRgba(const unsigned char* img, int w, int h, int channel,
                  float x, float y) {
     x = clampf(x, 0.f, (float)w - 1);
@@ -66,16 +56,14 @@ float sampleRgba(const unsigned char* img, int w, int h, int channel,
             v01 * (1 - fx) * fy + v11 * fx * fy) / 255.f;
 }
 
-// Bilinear luma from an interleaved RGBA byte image, normalized to 0-1.
+// Bilinear luma (0-1) from interleaved RGBA.
 float sampleLuma(const unsigned char* img, int w, int h, float x, float y) {
     return 0.299f * sampleRgba(img, w, h, 0, x, y) +
            0.587f * sampleRgba(img, w, h, 1, x, y) +
            0.114f * sampleRgba(img, w, h, 2, x, y);
 }
 
-// Parse the first Input blob name and the final output blob name from a
-// pnnx-generated .param. Some exports have no explicit Output layer, so fall
-// back to the last layer's first top blob.
+// First Input blob and final top blob; pnnx may omit an Output layer.
 void paramBlobNames(const std::vector<unsigned char>& param,
                     std::vector<std::string>& ins, std::string& outName) {
     std::string text((const char*)param.data(), param.size());
@@ -155,8 +143,7 @@ public:
         }
         ffnNet.set_vulkan_device(vkdev);
         ffnNet.opt.use_vulkan_compute = true;
-        // Samsung Xclipse miscompiles fp16 arithmetic shaders (same workaround
-        // as the RIFE engine); fp16 storage stays on.
+        // Match the RIFE engine: fp16 storage on, fp16 arithmetic off.
         ffnNet.opt.use_fp16_arithmetic = false;
         __android_log_print(ANDROID_LOG_INFO, "framegen",
                             "FastFlowNet on Vulkan: %s",
@@ -179,8 +166,7 @@ public:
         inited = false;
     }
 
-    // FFN: rgbaA/rgbaC (w*h*4) -> flow ((w/4)*(h/4)*2, FULL-res px units,
-    // sampled on the quarter-luma grid) and sad ((w/4)*(h/4), 0-1 residual).
+    // Flow on the quarter-luma grid (video px) and SAD residual (0-1).
     bool ffnFlow(const unsigned char* rgbaA, const unsigned char* rgbaC,
                  int w, int h, std::vector<float>& flow,
                  std::vector<float>& sad) {
@@ -193,8 +179,7 @@ public:
             nh = std::max(1, (int)std::lround((double)h * MAX_NET_SIDE / longSide));
         }
         const int iw = (nw + 63) / 64 * 64, ih = (nh + 63) / 64 * 64;
-        // Per-channel mean over the concatenated pair in BGR order, matching
-        // the channel layout fed to the network (demo.py centralize).
+        // Pair mean per BGR channel, as in demo.py.
         double sum[3] = {0., 0., 0.};
         for (const unsigned char* img : {rgbaA, rgbaC}) {
             const size_t n = (size_t)w * h;
@@ -214,8 +199,7 @@ public:
         const int lumaW = w / 4, lumaH = h / 4;
         if (fa.size() != (size_t)gw * gh * 2) return false;
         const float kx = (float)w / iw, ky = (float)h / ih;
-        // De-interleave into x/y planes so grid resampling is a plain
-        // bilinear lookup.
+        // Split into x/y planes for bilinear resampling.
         std::vector<float> fx((size_t)gw * gh), fy((size_t)gw * gh);
         for (size_t i = 0; i < (size_t)gw * gh; i++) {
             fx[i] = fa[i * 2];
@@ -234,7 +218,7 @@ public:
                 dst[1] = sampleBilinear(fy.data(), gw, gh, sx, sy) * ky;
             }
         }
-        // Alignment residual at grid points: |lumaA(g) - lumaC(g + f)|.
+        // Alignment residual |lumaA(g) - lumaC(g + f)|.
         sad.resize((size_t)lumaW * lumaH);
         for (int gy = 0; gy < lumaH; gy++) {
             for (int gx = 0; gx < lumaW; gx++) {
@@ -264,10 +248,8 @@ private:
         return false;
     }
 
-    // RGBA pair -> 6-channel planar float Mat in OpenCV BGR order: channels
-    // 0-2 are the first frame, 3-5 the second. FastFlowNet concatenates the
-    // pair along channels and subtracts the pair mean per channel
-    // (demo.py centralize). Samples straight to the padded network size.
+    // 6-channel BGR pair (frames in 0-2 / 3-5), mean-subtracted and sampled
+    // to the padded network size.
     static void pairToPlanar(const unsigned char* first,
                              const unsigned char* second, int w, int h,
                              int outW, int outH, const float* mean,
@@ -296,8 +278,7 @@ private:
         ex.input(ffnIn.c_str(), in);
         ncnn::Mat flow;
         if (ex.extract(ffnOut.c_str(), flow)) return false;
-        // pnnx graph output is the RAW flow (demo.py multiplies by 20 after
-        // upsampling); grid = padded size / 4; values in padded-input px.
+        // Raw pnnx flow * 20 (demo.py); values are in padded-input px.
         out.resize((size_t)flow.w * flow.h * 2);
         for (int y = 0; y < flow.h; y++) {
             for (int x = 0; x < flow.w; x++) {

@@ -1141,17 +1141,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         flowValid = true;
     }
 
-    /**
-     * Neural path: read the decoded pair back on the GL thread and run
-     * FastFlowNet on the inference thread. Only one inference is in flight, so
-     * the render thread never blocks on the network and playback keeps its
-     * frame rate even when the GPU cannot finish within one pair.
-     */
+    /** Read back on the GL thread, infer on the ffn thread. One run in flight. */
     private void requestNcnnMotion(int prev, int next) {
         if (ncnnBusy || ncnnHandler == null) {
             return;
         }
-        // The previous pair's flow does not describe this pair.
         flowValid = false;
         final int w = videoWidth;
         final int h = videoHeight;
@@ -1176,7 +1170,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         }
     }
 
-    /** GL thread: publish a finished inference if it still matches the pair. */
+    /** Publish a result only if it still matches the current pair. */
     private void applyNcnnMotion(int prev, int next, int w, int h,
                                  float[] flow, float[] sad, boolean ok) {
         ncnnBusy = false;
@@ -1196,8 +1190,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 || flow.length != lumaW * lumaH * 2) {
             return;
         }
-        // Pack into the exact RGBA8 encoding the GL pipeline already decodes:
-        // decodeFlow(texel) * 4 = displacement in full-res pixels.
+        // Pack with the encoding the GL warp shader decodes.
         ByteBuffer packed = uploadBuffer(flowUpload, lumaW * lumaH * 4);
         flowUpload = packed;
         for (int i = 0; i < lumaW * lumaH; i++) {
