@@ -470,6 +470,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     // warp/blend still renders the frame.
     private String engine = Settings.FRAME_GEN_ENGINE_GL;
     private NcnnFrameEngine ncnnEngine;
+    private float[] ncnnFlow;
+    private float[] ncnnSad;
+    private HandlerThread ncnnThread;
+    private Handler ncnnHandler;
+    private boolean ncnnBusy;
     private ByteBuffer readbackA;
     private ByteBuffer readbackC;
     private ByteBuffer flowUpload;
@@ -597,6 +602,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         thread = new HandlerThread("framegen");
         thread.start();
         handler = new Handler(thread.getLooper());
+        if (!Settings.FRAME_GEN_ENGINE_GL.equals(engine)) {
+            ncnnThread = new HandlerThread("ffn");
+            ncnnThread.start();
+            ncnnHandler = new Handler(ncnnThread.getLooper());
+        }
         view.getHolder().addCallback(this);
     }
 
@@ -621,9 +631,14 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 choreographer.removeFrameCallback(this);
             }
             destroyGl();
-            if (ncnnEngine != null) {
-                ncnnEngine.close();
-                ncnnEngine = null;
+            if (ncnnHandler != null) {
+                ncnnHandler.post(() -> {
+                    if (ncnnEngine != null) {
+                        ncnnEngine.close();
+                        ncnnEngine = null;
+                    }
+                    ncnnThread.quitSafely();
+                });
             }
             detached.countDown();
             thread.quitSafely();
@@ -1039,7 +1054,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 if (Settings.FRAME_GEN_ENGINE_GL.equals(engine)) {
                     estimateMotion((writeIndex - 1 + RING) % RING, writeIndex);
                 } else {
-                    estimateMotionNcnn((writeIndex - 1 + RING) % RING, writeIndex);
+                    requestNcnnMotion((writeIndex - 1 + RING) % RING, writeIndex);
                 }
             }
             advancePair();
@@ -1127,27 +1142,58 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     }
 
     /**
-     * Neural path: read the decoded pair back from GL, run FastFlowNet in
-     * ncnn, and upload the flow + alignment residual into the existing warp
-     * textures (the GL occlusion-aware warp/blend renders the frame
-     * unchanged).
+     * Neural path: read the decoded pair back on the GL thread and run
+     * FastFlowNet on the inference thread. Only one inference is in flight, so
+     * the render thread never blocks on the network and playback keeps its
+     * frame rate even when the GPU cannot finish within one pair.
      */
-    private void estimateMotionNcnn(int prev, int next) {
-        if (!ensureNcnn()) {
+    private void requestNcnnMotion(int prev, int next) {
+        if (ncnnBusy || ncnnHandler == null) {
+            return;
+        }
+        // The previous pair's flow does not describe this pair.
+        flowValid = false;
+        final int w = videoWidth;
+        final int h = videoHeight;
+        final int lumaW = w / 4;
+        final int lumaH = h / 4;
+        final int flowLen = lumaW * lumaH * 2;
+        if (ncnnFlow == null || ncnnFlow.length != flowLen) {
+            ncnnFlow = new float[flowLen];
+            ncnnSad = new float[lumaW * lumaH];
+        }
+        final float[] flow = ncnnFlow;
+        final float[] sad = ncnnSad;
+        readbackTexture(prev, true);
+        readbackTexture(next, false);
+        ncnnBusy = true;
+        if (!ncnnHandler.post(() -> {
+            boolean ok = ensureNcnn()
+                    && ncnnEngine.ffnFlow(readbackA, readbackC, w, h, flow, sad);
+            handler.post(() -> applyNcnnMotion(prev, next, w, h, flow, sad, ok));
+        })) {
+            ncnnBusy = false;
+        }
+    }
+
+    /** GL thread: publish a finished inference if it still matches the pair. */
+    private void applyNcnnMotion(int prev, int next, int w, int h,
+                                 float[] flow, float[] sad, boolean ok) {
+        ncnnBusy = false;
+        if (released) {
+            return;
+        }
+        if (ncnnEngine == null || !ncnnEngine.available) {
             engine = Settings.FRAME_GEN_ENGINE_GL;
             flowValid = false;
             return;
         }
-        readbackTexture(prev, true);
-        readbackTexture(next, false);
-        // FastFlowNet: flow on the quarter-luma grid, full-res pixel units.
-        final int lumaW = videoWidth / 4;
-        final int lumaH = videoHeight / 4;
-        float[] flow = new float[lumaW * lumaH * 2];
-        float[] sad = new float[lumaW * lumaH];
-        if (!ncnnEngine.ffnFlow(readbackA, readbackC, videoWidth, videoHeight,
-                flow, sad)) {
-            flowValid = false;
+        final int lumaW = w / 4;
+        final int lumaH = h / 4;
+        final int currentPrev = (writeIndex - 1 + RING) % RING;
+        if (!ok || prev != currentPrev || next != writeIndex
+                || w != videoWidth || h != videoHeight
+                || flow.length != lumaW * lumaH * 2) {
             return;
         }
         // Pack into the exact RGBA8 encoding the GL pipeline already decodes:
@@ -1200,7 +1246,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         return (int) Math.max(0f, Math.min(255f, frac * 255f));
     }
 
-    /** Lazy-load the ncnn engine on the GL thread. */
+    /** Lazy-load the ncnn engine on the inference thread. */
     private boolean ensureNcnn() {
         if (ncnnEngine == null) {
             ncnnEngine = new NcnnFrameEngine(view.getContext());
