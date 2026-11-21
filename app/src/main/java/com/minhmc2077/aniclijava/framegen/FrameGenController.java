@@ -21,6 +21,8 @@ import android.view.SurfaceView;
 
 import androidx.annotation.NonNull;
 
+import com.minhmc2077.aniclijava.util.Settings;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -462,6 +464,17 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private int targetFps = 60;
     private long nextDrawNs;
 
+    // Neural engine selection (Settings.FRAME_GEN_ENGINE_*). "gl" keeps the
+    // shipped shader pipeline untouched; "fastflownet" replaces only the flow
+    // source: ncnn estimates the pair flow and the GL occlusion-aware
+    // warp/blend still renders the frame.
+    private String engine = Settings.FRAME_GEN_ENGINE_GL;
+    private NcnnFrameEngine ncnnEngine;
+    private ByteBuffer readbackA;
+    private ByteBuffer readbackC;
+    private ByteBuffer flowUpload;
+    private ByteBuffer sadUpload;
+
     private static final int RING = 2;
     private static final int SEARCH_RANGE = 24;
     private static final int SEARCH_SIZE = SEARCH_RANGE * 2 + 1;
@@ -578,6 +591,9 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     public FrameGenController(@NonNull SurfaceView view, @NonNull Listener listener) {
         this.view = view;
         this.listener = listener;
+        engine = NcnnFrameEngine.modelBundled(view.getContext())
+                ? Settings.frameGenEngine(view.getContext())
+                : Settings.FRAME_GEN_ENGINE_GL;
         thread = new HandlerThread("framegen");
         thread.start();
         handler = new Handler(thread.getLooper());
@@ -605,6 +621,10 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 choreographer.removeFrameCallback(this);
             }
             destroyGl();
+            if (ncnnEngine != null) {
+                ncnnEngine.close();
+                ncnnEngine = null;
+            }
             detached.countDown();
             thread.quitSafely();
         })) {
@@ -1016,7 +1036,11 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 frameCount++;
             }
             if (frameCount >= 2) {
-                estimateMotion((writeIndex - 1 + RING) % RING, writeIndex);
+                if (Settings.FRAME_GEN_ENGINE_GL.equals(engine)) {
+                    estimateMotion((writeIndex - 1 + RING) % RING, writeIndex);
+                } else {
+                    estimateMotionNcnn((writeIndex - 1 + RING) % RING, writeIndex);
+                }
             }
             advancePair();
         }
@@ -1100,6 +1124,113 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         flowPrev = prev;
         flowNext = next;
         flowValid = true;
+    }
+
+    /**
+     * Neural path: read the decoded pair back from GL, run FastFlowNet in
+     * ncnn, and upload the flow + alignment residual into the existing warp
+     * textures (the GL occlusion-aware warp/blend renders the frame
+     * unchanged).
+     */
+    private void estimateMotionNcnn(int prev, int next) {
+        if (!ensureNcnn()) {
+            engine = Settings.FRAME_GEN_ENGINE_GL;
+            flowValid = false;
+            return;
+        }
+        readbackTexture(prev, true);
+        readbackTexture(next, false);
+        // FastFlowNet: flow on the quarter-luma grid, full-res pixel units.
+        final int lumaW = videoWidth / 4;
+        final int lumaH = videoHeight / 4;
+        float[] flow = new float[lumaW * lumaH * 2];
+        float[] sad = new float[lumaW * lumaH];
+        if (!ncnnEngine.ffnFlow(readbackA, readbackC, videoWidth, videoHeight,
+                flow, sad)) {
+            flowValid = false;
+            return;
+        }
+        // Pack into the exact RGBA8 encoding the GL pipeline already decodes:
+        // decodeFlow(texel) * 4 = displacement in full-res pixels.
+        ByteBuffer packed = uploadBuffer(flowUpload, lumaW * lumaH * 4);
+        flowUpload = packed;
+        for (int i = 0; i < lumaW * lumaH; i++) {
+            packed.put((byte) encodeChannel(flow[i * 2]));
+            packed.put((byte) encodeFrac(flow[i * 2]));
+            packed.put((byte) encodeChannel(flow[i * 2 + 1]));
+            packed.put((byte) encodeFrac(flow[i * 2 + 1]));
+        }
+        packed.position(0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pixelFlowTexture);
+        GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, lumaW, lumaH,
+                GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, packed);
+        ByteBuffer sadBuf = uploadBuffer(sadUpload, lumaW * lumaH * 4);
+        sadUpload = sadBuf;
+        for (int i = 0; i < lumaW * lumaH; i++) {
+            int v = (int) Math.max(0f, Math.min(1f, sad[i]) * 255f);
+            sadBuf.put((byte) v).put((byte) v).put((byte) v).put((byte) 255);
+        }
+        sadBuf.position(0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, pixelSadTexture);
+        GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, lumaW, lumaH,
+                GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, sadBuf);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+        flowPrev = prev;
+        flowNext = next;
+        flowValid = true;
+    }
+
+    private static ByteBuffer uploadBuffer(ByteBuffer buffer, int size) {
+        if (buffer == null || buffer.capacity() < size) {
+            return ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder());
+        }
+        buffer.clear();
+        return buffer;
+    }
+
+    /** Encode a full-res pixel displacement into the packed 0-255 channel. */
+    private static int encodeChannel(float displacementPx) {
+        float e = (displacementPx / 4f + 192f) * (255f / 384f);
+        return (int) Math.max(0f, Math.min(255f, (float) Math.floor(e)));
+    }
+
+    private static int encodeFrac(float displacementPx) {
+        float e = (displacementPx / 4f + 192f) * (255f / 384f);
+        float frac = e - (float) Math.floor(e);
+        return (int) Math.max(0f, Math.min(255f, frac * 255f));
+    }
+
+    /** Lazy-load the ncnn engine on the GL thread. */
+    private boolean ensureNcnn() {
+        if (ncnnEngine == null) {
+            ncnnEngine = new NcnnFrameEngine(view.getContext());
+        }
+        return ncnnEngine.available;
+    }
+
+    /** glReadPixels of a ring frame; first call fills buffer A, second C. */
+    private void readbackTexture(int index, boolean intoA) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
+        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER,
+                GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D,
+                frameTexture[index], 0);
+        int bytes = videoWidth * videoHeight * 4;
+        if (intoA) {
+            readbackA = readbackBuffer(readbackA, bytes);
+        } else {
+            readbackC = readbackBuffer(readbackC, bytes);
+        }
+        GLES20.glReadPixels(0, 0, videoWidth, videoHeight, GLES20.GL_RGBA,
+                GLES20.GL_UNSIGNED_BYTE, intoA ? readbackA : readbackC);
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+    }
+
+    private static ByteBuffer readbackBuffer(ByteBuffer buffer, int bytes) {
+        if (buffer == null || buffer.capacity() != bytes) {
+            return ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+        }
+        buffer.clear();
+        return buffer;
     }
 
     private void renderSearch(int prev, int next, float pickRange, float stride, float inset) {

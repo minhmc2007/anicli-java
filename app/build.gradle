@@ -28,9 +28,66 @@ def configString = { value ->
     '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 
+def downloadFile = { String url, File target ->
+    target.parentFile.mkdirs()
+    def connection = new URL(url).openConnection()
+    connection.setRequestProperty('User-Agent', 'anicli-java-build')
+    connection.setRequestProperty('Accept', 'application/octet-stream')
+    connection.connectTimeout = 30000
+    connection.readTimeout = 600000
+    connection.inputStream.withStream { input ->
+        target.withOutputStream { output -> output << input }
+    }
+}
+
+// ncnn is a 40 MB prebuilt static release, so fetch it at build time instead
+// of vendoring it. Pinned to match the NDK 30 / clang 21 toolchain.
+def ncnnVersion = '20261020'
+def ncnnRoot = layout.buildDirectory.dir('ncnn/current').get().asFile
+
+tasks.register('prepareNcnn') {
+    outputs.upToDateWhen { false }
+    doLast {
+        if (new File(ncnnRoot, "arm64-v8a/lib/libncnn.a").isFile()
+                && new File(ncnnRoot, "x86_64/lib/libncnn.a").isFile()) {
+            return
+        }
+        delete ncnnRoot
+        def cacheDir = new File(layout.buildDirectory.get().asFile, 'ncnn')
+        def archive = new File(cacheDir, "ncnn-${ncnnVersion}-android-vulkan.zip")
+        if (!archive.isFile() || archive.length() == 0) {
+            downloadFile("https://github.com/Tencent/ncnn/releases/download/${ncnnVersion}/"
+                    + "ncnn-${ncnnVersion}-android-vulkan.zip", archive)
+        }
+        def staging = new File(cacheDir, "staging-${ncnnVersion}")
+        delete staging
+        copy {
+            from zipTree(archive)
+            into staging
+        }
+        def root = staging.listFiles()?.find { it.isDirectory() }
+        if (root == null) {
+            throw new GradleException('Unexpected ncnn archive layout')
+        }
+        copy {
+            from root
+            into ncnnRoot
+        }
+        delete staging
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name.startsWith('configureCMake') || task.name.startsWith('buildCMake')) {
+        task.dependsOn('prepareNcnn')
+    }
+}
+
 android {
     namespace 'com.minhmc2077.aniclijava'
     compileSdk 37
+    // Match ncnn's prebuilt clang 21 libc++.
+    ndkVersion '30.0.16248370'
 
     // Fixed debug key so consecutive CI builds are signed identically.
     signingConfigs {
@@ -49,6 +106,17 @@ android {
         targetSdk 37
         versionCode 1
         versionName versionFromSource()
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DNCNN_DIR=${ncnnRoot.absolutePath}"
+                cppFlags '-std=c++17'
+            }
+        }
 
         buildConfigField "String", "MAL_CLIENT_ID",
                 configString(syncCredential('mal.clientId', 'MAL_CLIENT_ID'))
@@ -87,6 +155,13 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/framegen/CMakeLists.txt"
+            version "3.22.1"
+        }
     }
 
     buildFeatures {

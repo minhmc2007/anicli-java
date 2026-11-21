@@ -33,6 +33,7 @@ import com.minhmc2077.aniclijava.R;
 import com.minhmc2077.aniclijava.Version;
 import com.minhmc2077.aniclijava.cache.CacheActivity;
 import com.minhmc2077.aniclijava.data.SyncStore;
+import com.minhmc2077.aniclijava.framegen.NcnnFrameEngine;
 import com.minhmc2077.aniclijava.sync.SyncAuth;
 import com.minhmc2077.aniclijava.util.Settings;
 import com.minhmc2077.aniclijava.util.Ui;
@@ -544,10 +545,16 @@ public final class SettingsActivity extends BaseActivity {
         SwitchCompat frameGenSwitch = findViewById(R.id.frame_gen_switch);
         View fpsRow = findViewById(R.id.frame_gen_fps_row);
         TextView fpsValue = findViewById(R.id.frame_gen_fps_value);
+        View engineRow = findViewById(R.id.frame_gen_engine_row);
+        TextView engineValue = findViewById(R.id.frame_gen_engine_value);
         boolean enabled = Settings.frameGenEnabled(this);
+        boolean ffn = NcnnFrameEngine.modelBundled(this);
         fpsRow.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        engineRow.setVisibility(enabled && ffn ? View.VISIBLE : View.GONE);
         fpsValue.setText(getString(R.string.settings_frame_gen_fps_value,
                 Settings.frameGenTargetFps(this)));
+        engineValue.setText(engineLabel(ffn ? Settings.frameGenEngine(this)
+                : Settings.FRAME_GEN_ENGINE_GL));
         frameGenSwitch.setChecked(enabled);
         frameGenSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
@@ -557,6 +564,29 @@ public final class SettingsActivity extends BaseActivity {
             }
         });
         fpsRow.setOnClickListener(v -> pickFrameGenFps(fpsValue));
+        engineRow.setOnClickListener(v -> pickFrameGenEngine(engineValue));
+    }
+
+    private String engineLabel(String engine) {
+        if (Settings.FRAME_GEN_ENGINE_FFN.equals(engine)) {
+            return getString(R.string.settings_frame_gen_engine_ffn);
+        }
+        return getString(R.string.settings_frame_gen_engine_gl);
+    }
+
+    private void pickFrameGenEngine(TextView engineValue) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_frame_gen_engine)
+                .setItems(new CharSequence[]{
+                        getString(R.string.settings_frame_gen_engine_gl),
+                        getString(R.string.settings_frame_gen_engine_ffn)
+                }, (dialog, which) -> {
+                    String engine = which == 1 ? Settings.FRAME_GEN_ENGINE_FFN
+                            : Settings.FRAME_GEN_ENGINE_GL;
+                    Settings.setFrameGenEngine(this, engine);
+                    engineValue.setText(engineLabel(engine));
+                })
+                .show();
     }
 
     private void confirmFrameGenEnable(SwitchCompat frameGenSwitch, View fpsRow) {
@@ -574,6 +604,9 @@ public final class SettingsActivity extends BaseActivity {
     private void applyFrameGenEnabled(boolean enabled, View fpsRow) {
         Settings.setFrameGenEnabled(this, enabled);
         fpsRow.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        findViewById(R.id.frame_gen_engine_row).setVisibility(
+                enabled && NcnnFrameEngine.modelBundled(this)
+                        ? View.VISIBLE : View.GONE);
     }
 
     private void pickFrameGenFps(TextView fpsValue) {

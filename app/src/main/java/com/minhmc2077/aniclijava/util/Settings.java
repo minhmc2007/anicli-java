@@ -20,8 +20,12 @@ public final class Settings {
     private static final String KEY_ANIME_SOURCE = "anime_source";
     private static final String KEY_FRAME_GEN = "frame_gen";
     private static final String KEY_FRAME_GEN_FPS = "frame_gen_fps";
+    private static final String KEY_FRAME_GEN_ENGINE = "frame_gen_engine";
 
     public static final int FRAME_GEN_FPS_DEFAULT = 60;
+
+    public static final String FRAME_GEN_ENGINE_GL = "gl";
+    public static final String FRAME_GEN_ENGINE_FFN = "fastflownet";
 
     public static final int SKIP_OFF = 0;
     public static final int SKIP_ON_TIME = 1;
@@ -158,6 +162,19 @@ public final class Settings {
 
     public static void setFrameGenTargetFps(Context context, int fps) {
         prefs(context).edit().putInt(KEY_FRAME_GEN_FPS, fps == 120 ? 120 : 60).apply();
+    }
+
+    /** Frame generation engine: FRAME_GEN_ENGINE_GL (default) or _FFN. */
+    public static String frameGenEngine(Context context) {
+        String engine = prefs(context).getString(KEY_FRAME_GEN_ENGINE, FRAME_GEN_ENGINE_GL);
+        return FRAME_GEN_ENGINE_FFN.equals(engine) ? engine : FRAME_GEN_ENGINE_GL;
+    }
+
+    public static void setFrameGenEngine(Context context, String engine) {
+        String value = FRAME_GEN_ENGINE_FFN.equals(engine)
+                ? engine
+                : FRAME_GEN_ENGINE_GL;
+        prefs(context).edit().putString(KEY_FRAME_GEN_ENGINE, value).apply();
     }
 
     public static String animeSource(Context context) {
