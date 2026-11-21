@@ -40,21 +40,21 @@ float sampleBilinear(const float* img, int w, int h, float x, float y) {
            v01 * (1 - fx) * fy + v11 * fx * fy;
 }
 
-// Bilinear resize a 3-channel ncnn Mat (in-place geometry change).
-void resizeMatBilinear(const ncnn::Mat& src, ncnn::Mat& dst, int w, int h) {
-    dst.create(w, h, 3);
-    const float kx = (float)src.w / w, ky = (float)src.h / h;
-    for (int c = 0; c < 3; c++) {
-        const float* sp = src.channel(c);
-        float* dp = dst.channel(c);
-        for (int y = 0; y < h; y++) {
-            const float sy = (y + 0.5f) * ky - 0.5f;
-            for (int x = 0; x < w; x++) {
-                const float sx = (x + 0.5f) * kx - 0.5f;
-                dp[(size_t)y * w + x] = sampleBilinear(sp, src.w, src.h, sx, sy);
-            }
-        }
-    }
+// Bilinear sample one BGR channel from an interleaved RGBA byte image.
+float sampleRgba(const unsigned char* img, int w, int h, int channel,
+                 float x, float y) {
+    x = clampf(x, 0.f, (float)w - 1);
+    y = clampf(y, 0.f, (float)h - 1);
+    const int x0 = (int)x, y0 = (int)y;
+    const int x1 = std::min(x0 + 1, w - 1), y1 = std::min(y0 + 1, h - 1);
+    const float fx = x - x0, fy = y - y0;
+    const size_t s = (size_t)y0 * w * 4 + (size_t)x0 * 4 + channel;
+    const size_t o = (size_t)(x1 - x0) * 4;
+    const size_t p = (size_t)(y1 - y0) * w * 4;
+    const float v00 = img[s], v10 = img[s + o];
+    const float v01 = img[s + p], v11 = img[s + o + p];
+    return (v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) +
+            v01 * (1 - fx) * fy + v11 * fx * fy) / 255.f;
 }
 
 // Parse the first Input blob name and the final output blob name from a
@@ -130,22 +130,21 @@ public:
         if (ffnIns.empty() || ffnOut.empty()) return false;
         ffnIn = ffnIns[0];
         ffnNet.opt.num_threads = 2;
-        int gpuIndex = -1;
-        if (ncnn::get_gpu_count() > 0) {
-            const ncnn::VulkanDevice* vkdev = ncnn::get_gpu_device(0);
-            if (vkdev && vkdev->is_valid()) gpuIndex = 0;
+        const ncnn::VulkanDevice* vkdev =
+            ncnn::get_gpu_count() > 0 ? ncnn::get_gpu_device(0) : 0;
+        if (!vkdev || !vkdev->is_valid()) {
+            __android_log_print(ANDROID_LOG_ERROR, "framegen",
+                                "FastFlowNet: no Vulkan device");
+            return false;
         }
-        if (gpuIndex >= 0) {
-            ffnNet.set_vulkan_device(gpuIndex);
-            ffnNet.opt.use_vulkan_compute = true;
-            gpuInited = true;
-            __android_log_print(ANDROID_LOG_INFO, "framegen",
-                                "FastFlowNet on Vulkan: %s",
-                                ncnn::get_gpu_info(gpuIndex).device_name());
-        } else {
-            __android_log_print(ANDROID_LOG_WARN, "framegen",
-                                "FastFlowNet: no Vulkan device, using CPU");
-        }
+        ffnNet.set_vulkan_device(vkdev);
+        ffnNet.opt.use_vulkan_compute = true;
+        // Samsung Xclipse miscompiles fp16 arithmetic shaders (same workaround
+        // as the RIFE engine); fp16 storage stays on.
+        ffnNet.opt.use_fp16_arithmetic = false;
+        __android_log_print(ANDROID_LOG_INFO, "framegen",
+                            "FastFlowNet on Vulkan: %s",
+                            ncnn::get_gpu_info(0).device_name());
         const unsigned char* ffp = ffnParam.data();
         const unsigned char* ffb = ffnBin.data();
         ncnn::DataReaderFromMemory ffnParamReader(ffp, ffnParam.size());
@@ -159,8 +158,8 @@ public:
     bool ready() const { return inited; }
 
     void shutdown() {
-        if (!inited && !gpuInited) return;
-        fail();
+        if (!inited) return;
+        ffnNet.clear();
         inited = false;
     }
 
@@ -170,34 +169,30 @@ public:
                  int w, int h, std::vector<float>& flow,
                  std::vector<float>& sad) {
         const int ih = (h + 63) / 64 * 64, iw = (w + 63) / 64 * 64;
-        // Per-channel mean over the CONCATENATED pair (demo.py centralize).
+        // Per-channel mean over the concatenated pair in BGR order, matching
+        // the channel layout fed to the network (demo.py centralize).
         double sum[3] = {0., 0., 0.};
         for (const unsigned char* img : {rgbaA, rgbaC}) {
             const size_t n = (size_t)w * h;
             for (size_t i = 0; i < n; i++) {
-                for (int c = 0; c < 3; c++) sum[c] += img[i * 4 + c];
+                for (int c = 0; c < 3; c++) sum[c] += img[i * 4 + (2 - c)];
             }
         }
         float mean[3];
         for (int c = 0; c < 3; c++) {
             mean[c] = (float)(sum[c] / (2.0 * w * h) / 255.0);
         }
-        ncnn::Mat a, c;
-        rgbaToPlanar(rgbaA, w, h, mean, a);
-        rgbaToPlanar(rgbaC, w, h, mean, c);
-        ncnn::Mat pa, pc;
-        if (ih != h || iw != w) {
-            resizeMatBilinear(a, pa, iw, ih);
-            resizeMatBilinear(c, pc, iw, ih);
-        } else {
-            pa = a;
-            pc = c;
-        }
-        const float kx = (float)w / iw, ky = (float)h / ih;
+        ncnn::Mat in;
         std::vector<float> fa, fc;  // padded/4 grid, padded-px units
-        if (!runFfn(pa, fa) || !runFfn(pc, fc)) return false;
+        pairToPlanar(rgbaA, rgbaC, w, h, iw, ih, mean, in);
+        if (!runFfn(in, fa)) return false;
+        pairToPlanar(rgbaC, rgbaA, w, h, iw, ih, mean, in);
+        if (!runFfn(in, fc)) return false;
         const int gw = iw / 4, gh = ih / 4;
         const int lumaW = w / 4, lumaH = h / 4;
+        const size_t gridElems = (size_t)gw * gh * 2;
+        if (fa.size() != gridElems || fc.size() != gridElems) return false;
+        const float kx = (float)w / iw, ky = (float)h / ih;
         // De-interleave into x/y planes so grid resampling is a plain
         // bilinear lookup.
         std::vector<float> fax((size_t)gw * gh), fay((size_t)gw * gh);
@@ -249,24 +244,32 @@ public:
 private:
     bool fail() {
         ffnNet.clear();
-        if (gpuInited) {
-            ncnn::destroy_gpu_instance();
-            gpuInited = false;
-        }
         return false;
     }
 
-    // RGBA bytes -> planar float Mat in OpenCV BGR order (FastFlowNet's
-    // training convention); mean[] is subtracted (pair centralization).
-    static void rgbaToPlanar(const unsigned char* rgba, int w, int h,
-                             const float* mean, ncnn::Mat& m) {
-        m.create(w, h, 3);
-        const size_t n = (size_t)w * h;
+    // RGBA pair -> 6-channel planar float Mat in OpenCV BGR order: channels
+    // 0-2 are the first frame, 3-5 the second. FastFlowNet concatenates the
+    // pair along channels and subtracts the pair mean per channel
+    // (demo.py centralize). Samples straight to the padded network size.
+    static void pairToPlanar(const unsigned char* first,
+                             const unsigned char* second, int w, int h,
+                             int outW, int outH, const float* mean,
+                             ncnn::Mat& m) {
+        m.create(outW, outH, 6);
+        const float kx = (float)w / outW, ky = (float)h / outH;
+        const bool same = outW == w && outH == h;
         for (int c = 0; c < 3; c++) {
             const int src = 2 - c;
-            float* dst = m.channel(c);
-            for (size_t i = 0; i < n; i++) {
-                dst[i] = rgba[i * 4 + src] / 255.f - mean[c];
+            float* d0 = m.channel(c);
+            float* d1 = m.channel(c + 3);
+            for (int y = 0; y < outH; y++) {
+                const float sy = same ? (float)y : (y + 0.5f) * ky - 0.5f;
+                for (int x = 0; x < outW; x++) {
+                    const float sx = same ? (float)x : (x + 0.5f) * kx - 0.5f;
+                    const size_t i = (size_t)y * outW + x;
+                    d0[i] = sampleRgba(first, w, h, src, sx, sy) - mean[c];
+                    d1[i] = sampleRgba(second, w, h, src, sx, sy) - mean[c];
+                }
             }
         }
     }
@@ -299,7 +302,6 @@ private:
     }
 
     bool inited = false;
-    bool gpuInited = false;
     ncnn::Net ffnNet;
     std::vector<unsigned char> ffnParam, ffnBin;
     std::string ffnIn, ffnOut;
