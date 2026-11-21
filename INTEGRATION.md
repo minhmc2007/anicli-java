@@ -18,16 +18,16 @@ for arm64-v8a, armeabi-v7a, x86 and x86_64.
 
 ## Model files
 
-The patch did not include the converted weights. Drop them in:
+The converted weights are tracked with Git LFS:
 
 ```
 app/src/main/assets/framegen/ffn.ncnn.param
 app/src/main/assets/framegen/ffn.ncnn.bin
 ```
 
-The **Engine** row stays hidden while either file is missing, and playback
-falls back to the GL engine if the native library or weights fail to load.
-Once the files are in the APK the row appears automatically.
+CI checkouts use `actions/checkout` with `lfs: true`, so the real files are in
+the APK. Playback falls back to the GL engine if the native library or weights
+fail to load.
 
 ## What was added / changed
 
@@ -69,9 +69,9 @@ unchanged.
 
 ## Building
 
-Requires Android Studio with NDK 30.0.16248370 + CMake 3.22.1.
-`./gradlew :app:assembleDebug` as usual; Gradle downloads ncnn into
-`app/build/ncnn/current` before the C++ build.
+Requires Android Studio with NDK 30.0.16248370 + CMake 3.22.1 and `git lfs`
+(for the weights). `./gradlew :app:assembleDebug` as usual; Gradle downloads
+ncnn into `app/build/ncnn/current` before the C++ build.
 
 ## Source
 
