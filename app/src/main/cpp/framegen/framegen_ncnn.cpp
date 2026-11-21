@@ -244,6 +244,11 @@ public:
         return true;
     }
 
+    float lastInferMs() const { return lastMs; }
+    int netWidth() const { return netW; }
+    int netHeight() const { return netH; }
+    const std::string& deviceName() const { return device; }
+
 private:
     bool fail() {
         ffnNet.clear();
@@ -343,7 +348,7 @@ Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeFfnFlow(
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeLastInferMs(
     JNIEnv*, jclass) {
-    return g_engine.lastMs;
+    return g_engine.lastInferMs();
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
@@ -351,7 +356,7 @@ Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeNetSize(
     JNIEnv* env, jclass) {
     jintArray out = env->NewIntArray(2);
     if (out) {
-        const jint size[2] = {g_engine.netW, g_engine.netH};
+        const jint size[2] = {g_engine.netWidth(), g_engine.netHeight()};
         env->SetIntArrayRegion(out, 0, 2, size);
     }
     return out;
@@ -360,7 +365,7 @@ Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeNetSize(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_minhmc2077_aniclijava_framegen_NcnnFrameEngine_nativeDeviceName(
     JNIEnv* env, jclass) {
-    return env->NewStringUTF(g_engine.device.c_str());
+    return env->NewStringUTF(g_engine.deviceName().c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL

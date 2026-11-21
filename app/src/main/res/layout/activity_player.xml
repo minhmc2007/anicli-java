@@ -213,7 +213,7 @@
         android:textColor="@android:color/white"
         android:textSize="10sp"
         android:visibility="gone"
-        tools:text="FFN · Samsung Xclipse 530" />
+        tools:text="frame stats" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/skip_button"
