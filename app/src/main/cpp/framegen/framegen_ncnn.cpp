@@ -7,6 +7,7 @@
 // The existing GL warp/blend shader consumes both unchanged.
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
+#include <android/log.h>
 #include <jni.h>
 
 #include <algorithm>
@@ -16,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "gpu.h"
 #include "net.h"
 #include "datareader.h"
 
@@ -127,14 +129,29 @@ public:
         paramBlobNames(ffnParam, ffnIns, ffnOut);
         if (ffnIns.empty() || ffnOut.empty()) return false;
         ffnIn = ffnIns[0];
-        ffnNet.opt.use_vulkan_compute = false;
         ffnNet.opt.num_threads = 2;
+        int gpuIndex = -1;
+        if (ncnn::get_gpu_count() > 0) {
+            const ncnn::VulkanDevice* vkdev = ncnn::get_gpu_device(0);
+            if (vkdev && vkdev->is_valid()) gpuIndex = 0;
+        }
+        if (gpuIndex >= 0) {
+            ffnNet.set_vulkan_device(gpuIndex);
+            ffnNet.opt.use_vulkan_compute = true;
+            gpuInited = true;
+            __android_log_print(ANDROID_LOG_INFO, "framegen",
+                                "FastFlowNet on Vulkan: %s",
+                                ncnn::get_gpu_info(gpuIndex).device_name());
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, "framegen",
+                                "FastFlowNet: no Vulkan device, using CPU");
+        }
         const unsigned char* ffp = ffnParam.data();
         const unsigned char* ffb = ffnBin.data();
         ncnn::DataReaderFromMemory ffnParamReader(ffp, ffnParam.size());
         ncnn::DataReaderFromMemory ffnBinReader(ffb, ffnBin.size());
-        if (ffnNet.load_param(ffnParamReader)) return false;
-        if (ffnNet.load_model(ffnBinReader)) return false;
+        if (ffnNet.load_param(ffnParamReader)) return fail();
+        if (ffnNet.load_model(ffnBinReader)) return fail();
         inited = true;
         return true;
     }
@@ -142,8 +159,8 @@ public:
     bool ready() const { return inited; }
 
     void shutdown() {
-        if (!inited) return;
-        ffnNet.clear();
+        if (!inited && !gpuInited) return;
+        fail();
         inited = false;
     }
 
@@ -230,6 +247,15 @@ public:
     }
 
 private:
+    bool fail() {
+        ffnNet.clear();
+        if (gpuInited) {
+            ncnn::destroy_gpu_instance();
+            gpuInited = false;
+        }
+        return false;
+    }
+
     // RGBA bytes -> planar float Mat in OpenCV BGR order (FastFlowNet's
     // training convention); mean[] is subtracted (pair centralization).
     static void rgbaToPlanar(const unsigned char* rgba, int w, int h,
@@ -273,6 +299,7 @@ private:
     }
 
     bool inited = false;
+    bool gpuInited = false;
     ncnn::Net ffnNet;
     std::vector<unsigned char> ffnParam, ffnBin;
     std::string ffnIn, ffnOut;
