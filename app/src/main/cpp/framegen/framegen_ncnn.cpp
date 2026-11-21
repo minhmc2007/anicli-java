@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -54,38 +55,45 @@ void resizeMatBilinear(const ncnn::Mat& src, ncnn::Mat& dst, int w, int h) {
     }
 }
 
-// Parse the first Input blob name(s) and the first Output blob name from a
-// pnnx-generated .param so we never hard-code pnnx's naming scheme.
+// Parse the first Input blob name and the final output blob name from a
+// pnnx-generated .param. Some exports have no explicit Output layer, so fall
+// back to the last layer's first top blob.
 void paramBlobNames(const std::vector<unsigned char>& param,
                     std::vector<std::string>& ins, std::string& outName) {
     std::string text((const char*)param.data(), param.size());
     size_t pos = 0;
     int lines = 0;
+    std::string lastTop;
     while (pos < text.size()) {
         size_t eol = text.find('\n', pos);
         if (eol == std::string::npos) eol = text.size();
         std::string line = text.substr(pos, eol - pos);
         pos = eol + 1;
         if (++lines <= 2) continue;  // magic + layer count
-        size_t s = line.find_first_not_of(" \t");
-        if (s == std::string::npos) continue;
-        size_t e = line.find_first_of(" \t", s);
-        std::string type = line.substr(s, e - s);
+        std::vector<std::string> tok;
+        size_t p = 0;
+        while (p < line.size() && tok.size() < 8) {
+            size_t s = line.find_first_not_of(" \t\r", p);
+            if (s == std::string::npos) break;
+            size_t e = line.find_first_of(" \t\r", s);
+            if (e == std::string::npos) e = line.size();
+            tok.push_back(line.substr(s, e - s));
+            p = e;
+        }
+        if (tok.size() < 4) continue;
+        const std::string& type = tok[0];
+        const int bottoms = std::atoi(tok[2].c_str());
+        const int tops = std::atoi(tok[3].c_str());
         if (type == "Input") {
-            size_t l = line.find_last_of(" \t");
-            std::string name = line.substr(l + 1);
-            while (!name.empty() &&
-                   (name.back() == '\r' || name.back() == ' '))
-                name.pop_back();
-            ins.push_back(name);
+            ins.push_back(tok[4]);
         } else if (type == "Output" && outName.empty()) {
-            size_t l = line.find_last_of(" \t");
-            outName = line.substr(l + 1);
-            while (!outName.empty() &&
-                   (outName.back() == '\r' || outName.back() == ' '))
-                outName.pop_back();
+            outName = tok.back();
+        }
+        if (tops > 0 && tok.size() > (size_t)(4 + bottoms)) {
+            lastTop = tok[4 + bottoms];
         }
     }
+    if (outName.empty()) outName = lastTop;
 }
 
 void readAsset(JNIEnv* env, jobject assetManager, const std::string& path,
