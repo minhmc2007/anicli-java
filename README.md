@@ -22,7 +22,8 @@ older release.
 
 ## Features
 
-- **Home** — trending anime from HiAnime.
+- **Home** — trending anime from the selected source.
+- **Adult source** — optional 18+ provider (Watch Hentai). It has its own history, favourites, cache and downloads, kept apart from HiAnime and Mkissa. Enabling it shows an age warning in Settings → Sources.
 - **Search** — search by title.
 - **Favourites** — save anime locally.
 - **History** — resume the last watched episode and position.
@@ -51,6 +52,18 @@ teal, green, red, and orange, plus Light, Dark, and System themes.
 The player adjusts brightness through its own window and volume through the
 player instance. Neither changes a system-wide setting or asks for a permission.
 
+## Adult source
+
+Settings → Sources → Watch Hentai switches the app to an adult-only provider.
+It is off by default and asks for confirmation before switching. The source has
+its own favourites, history, cache page and download records; none of it is
+visible while HiAnime or Mkissa is selected. Airing alerts and MAL/AniList sync
+only operate on the normal sources.
+
+The site exposes direct progressive MP4 files at several resolutions, so the
+player, quality menu and downloads work the same way as elsewhere. Episodes have
+no MyAnimeList ID, so AniSkip and service sync are skipped for this source.
+
 ## Frame generation
 
 Settings → Playback → Frame generation synthesises frames on the GPU to raise
@@ -76,7 +89,8 @@ expect a new GPU.
 7. Downloads and playback share one Media3 `SimpleCache` in the app cache directory. Playback writes to it and opens cached segments first, so streamed and downloaded episodes are both offline-friendly. Cache keys are prefixed with the anime, episode, and SUB/DUB mode, which lets the cache page attribute every byte and lets the download and player paths reuse the same entries.
 
 Favourites, history, settings, and sync tokens are stored in
-`SharedPreferences`. Cached and downloaded video lives in the app's cache
+`SharedPreferences`. Adult history and favourites use separate preference
+files, so switching sources never mixes the two libraries. Cached and downloaded video lives in the app's cache
 directory (`cacheDir/media`), with per-episode stream metadata in
 `SharedPreferences`. Because the cache is app cache storage, Android's system
 storage screen counts it as cache and can clear it. Sync is optional; without a

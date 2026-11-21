@@ -47,6 +47,8 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
     private AnimeDetail detail;
     private boolean favourite;
     private boolean notifyEnabled;
+    private boolean notifyAvailable = true;
+    private boolean modeAvailable = true;
     private boolean dub;
     private boolean loadingEpisodes;
     private String episodesError;
@@ -74,6 +76,16 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
 
     public void setNotifyEnabled(boolean notifyEnabled) {
         this.notifyEnabled = notifyEnabled;
+        notifyItemChanged(0);
+    }
+
+    public void setNotifyAvailable(boolean available) {
+        this.notifyAvailable = available;
+        notifyItemChanged(0);
+    }
+
+    public void setModeAvailable(boolean available) {
+        this.modeAvailable = available;
         notifyItemChanged(0);
     }
 
@@ -201,9 +213,11 @@ public final class DetailAdapter extends RecyclerView.Adapter<RecyclerView.ViewH
         holder.favourite.setIconResource(favourite
                 ? R.drawable.ic_favorite
                 : R.drawable.ic_favorite_border);
+        holder.notify.setVisibility(notifyAvailable ? View.VISIBLE : View.GONE);
         holder.notify.setAlpha(notifyEnabled ? 1f : 0.5f);
         holder.notify.setContentDescription(holder.itemView.getContext().getString(
                 notifyEnabled ? R.string.airing_turn_off : R.string.airing_turn_on));
+        holder.modeGroup.setVisibility(modeAvailable ? View.VISIBLE : View.GONE);
         holder.play.setEnabled(!episodes.isEmpty());
 
         bindingHeader = true;

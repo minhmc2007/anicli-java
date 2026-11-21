@@ -11,6 +11,7 @@
     <string name="home_title">Trending now</string>
     <string name="home_subtitle">Most watched anime on HiAnime right now</string>
     <string name="home_subtitle_mkissa">Popular anime on Mkissa right now</string>
+    <string name="home_subtitle_watchhentai">Adult anime on Watch Hentai right now</string>
     <string name="favourites_title">Favourites</string>
     <string name="favourites_subtitle">Anime you saved for later</string>
     <string name="history_title">History</string>
@@ -39,6 +40,7 @@
     <string name="error_network">Network error. Check your connection and try again.</string>
     <string name="error_cloudflare">HiAnime blocked the request. Please try again in a moment.</string>
     <string name="error_no_sources">No sources found for this episode.</string>
+    <string name="error_adult_source">Adult source is unavailable right now.</string>
     <string name="error_mkissa_captcha">Mkissa is asking for a captcha. Try again or switch source.</string>
     <string name="mkissa_verify_title">Mkissa verification</string>
     <string name="mkissa_verify_subtitle">Complete the check to load this episode</string>
@@ -137,12 +139,18 @@
     <string name="settings_buffer_value">%1$d min</string>
     <string name="settings_buffer_unlimited">Whole episode</string>
     <string name="settings_section_sources">Sources</string>
-    <string name="settings_sources_hint">Choose where anime is loaded from.</string>
+    <string name="settings_sources_hint">Choose where anime is loaded from. Adult content is kept in its own library.</string>
     <string name="settings_source_anime">Anime</string>
     <string name="settings_source_hianime">HiAnime</string>
     <string name="settings_source_hianime_desc">Stable Eng Sub/Dub provider.</string>
     <string name="settings_source_mkissa">Mkissa</string>
     <string name="settings_source_mkissa_desc">Experimental Eng Sub/Dub provider; better translation quality in some cases.</string>
+    <string name="settings_source_watchhentai">Watch Hentai</string>
+    <string name="settings_source_watchhentai_desc">Adult-only provider (18+). Separate history, favourites, cache and downloads.</string>
+    <string name="settings_source_adult_short">Adult</string>
+    <string name="settings_source_adult_warning_title">Adult content</string>
+    <string name="settings_source_adult_warning_message">This switches the app to an adult-only source with 18+ content.\n\nIts history, favourites, cache and downloads are stored separately and never appear with HiAnime or Mkissa. Airing alerts and MAL/AniList sync do not apply.\n\nContinue only if you are 18 or older.</string>
+    <string name="settings_source_adult_warning_confirm">I am 18 or older</string>
     <string name="settings_section_cache">Cache</string>
     <string name="settings_cache_hint">Streamed and downloaded episodes share this cache. When it reaches the limit, the oldest data is removed first.</string>
     <string name="settings_cache_usage">%1$s of %2$s used</string>
@@ -237,7 +245,7 @@
     <string name="cache_title">Cached data</string>
     <string name="cache_source_label">Source</string>
     <string name="cache_empty_source">Nothing cached from this source.</string>
-    <string name="cache_other_source">%1$s (other source): %2$s</string>
+    <string name="cache_other_sources">Other sources (%1$s): %2$s</string>
     <string name="cache_limit">Limit %1$s</string>
     <string name="cache_empty">Nothing cached yet.</string>
     <string name="cache_other">Other</string>

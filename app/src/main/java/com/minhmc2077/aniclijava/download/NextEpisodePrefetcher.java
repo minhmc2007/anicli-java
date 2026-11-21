@@ -76,7 +76,7 @@ public final class NextEpisodePrefetcher {
         if (minutes <= 0 || cancelled.get() || !TextUtils.isEmpty(info.mimeType)) {
             return;
         }
-        App.get().offline().putStream(animeId, episode.number, mode, info);
+        App.get().offlineFor(animeId).putStream(animeId, episode.number, mode, info);
 
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", CronetHttp.USER_AGENT);

@@ -17,13 +17,19 @@ import java.util.Map;
 
 public final class OfflineStore {
     private static final String PREFS = "anicli_offline";
+    private static final String ADULT_PREFS = "anicli_offline_adult";
     private static final String PREFIX = "stream_";
     private static final int MAX_ENTRIES = 60;
 
     private final SharedPreferences preferences;
 
     public OfflineStore(Context context) {
-        this.preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        this(context, false);
+    }
+
+    public OfflineStore(Context context, boolean adult) {
+        this.preferences = context.getSharedPreferences(adult ? ADULT_PREFS : PREFS,
+                Context.MODE_PRIVATE);
     }
 
     public synchronized StreamInfo stream(String animeId, String episodeNumber, String mode) {

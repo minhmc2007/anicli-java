@@ -1,7 +1,7 @@
 package com.minhmc2077.aniclijava;
 
 public final class Version {
-    public static final String NAME = "0.0.9";
+    public static final String NAME = "0.1.0";
 
     private Version() {
     }

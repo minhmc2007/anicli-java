@@ -66,6 +66,14 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="@string/settings_source_mkissa" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/cache_source_watchhentai"
+                    style="@style/Widget.AniCli.Button.Outlined"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/settings_source_adult_short" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <TextView

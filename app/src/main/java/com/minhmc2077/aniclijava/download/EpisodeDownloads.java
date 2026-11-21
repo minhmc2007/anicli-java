@@ -116,7 +116,7 @@ public final class EpisodeDownloads {
                     DownloadRequest request = prepared.getDownloadRequest(
                             id(animeId, episode.number, mode), null);
                     prepared.release();
-                    App.get().offline().putStream(animeId, episode.number, mode, info);
+                    App.get().offlineFor(animeId).putStream(animeId, episode.number, mode, info);
                     DownloadService.sendAddDownload(
                             context, AniDownloadService.class, request, true);
                     prune(context);

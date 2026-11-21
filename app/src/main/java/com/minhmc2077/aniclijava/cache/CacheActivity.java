@@ -82,16 +82,12 @@ public final class CacheActivity extends BaseActivity {
 
     private void setUpSourceGroup() {
         MaterialButtonToggleGroup group = findViewById(R.id.cache_source_group);
-        group.check(Settings.SOURCE_MKISSA.equals(cacheSource)
-                ? R.id.cache_source_mkissa
-                : R.id.cache_source_hianime);
+        group.check(sourceButton(cacheSource));
         group.addOnButtonCheckedListener((buttonGroup, checkedId, isChecked) -> {
             if (!isChecked) {
                 return;
             }
-            String source = checkedId == R.id.cache_source_mkissa
-                    ? Settings.SOURCE_MKISSA
-                    : Settings.SOURCE_HIANIME;
+            String source = sourceFor(checkedId);
             if (source.equals(cacheSource)) {
                 return;
             }
@@ -99,6 +95,26 @@ public final class CacheActivity extends BaseActivity {
             expandedGroups.clear();
             refresh();
         });
+    }
+
+    private static int sourceButton(String source) {
+        if (Settings.SOURCE_MKISSA.equals(source)) {
+            return R.id.cache_source_mkissa;
+        }
+        if (Settings.SOURCE_WATCHHENTAI.equals(source)) {
+            return R.id.cache_source_watchhentai;
+        }
+        return R.id.cache_source_hianime;
+    }
+
+    private static String sourceFor(int buttonId) {
+        if (buttonId == R.id.cache_source_mkissa) {
+            return Settings.SOURCE_MKISSA;
+        }
+        if (buttonId == R.id.cache_source_watchhentai) {
+            return Settings.SOURCE_WATCHHENTAI;
+        }
+        return Settings.SOURCE_HIANIME;
     }
 
     private void render(CacheReport report) {
@@ -117,10 +133,8 @@ public final class CacheActivity extends BaseActivity {
         }
         bar.setSegments(report.usage, report.limit, segments);
 
-        String otherName = getString(Settings.SOURCE_MKISSA.equals(cacheSource)
-                ? R.string.settings_source_hianime
-                : R.string.settings_source_mkissa);
-        other.setText(getString(R.string.cache_other_source, otherName,
+        String otherName = TextUtils.join(", ", otherSourceNames());
+        other.setText(getString(R.string.cache_other_sources, otherName,
                 Formatter.formatShortFileSize(this, report.otherBytes)));
         other.setVisibility(report.otherBytes > 0L ? View.VISIBLE : View.GONE);
 
@@ -265,6 +279,20 @@ public final class CacheActivity extends BaseActivity {
                     }
                     Ui.toast(this, getString(R.string.error_generic));
                 });
+    }
+
+    private List<String> otherSourceNames() {
+        List<String> names = new ArrayList<>();
+        if (!Settings.SOURCE_HIANIME.equals(cacheSource)) {
+            names.add(getString(R.string.settings_source_hianime));
+        }
+        if (!Settings.SOURCE_MKISSA.equals(cacheSource)) {
+            names.add(getString(R.string.settings_source_mkissa));
+        }
+        if (!Settings.SOURCE_WATCHHENTAI.equals(cacheSource)) {
+            names.add(getString(R.string.settings_source_adult_short));
+        }
+        return names;
     }
 
     private String groupSubtitle(CacheReport.Group group) {

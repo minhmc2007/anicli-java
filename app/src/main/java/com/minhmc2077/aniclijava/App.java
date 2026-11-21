@@ -15,6 +15,7 @@ import com.minhmc2077.aniclijava.data.HistoryStore;
 import com.minhmc2077.aniclijava.data.MkissaRepository;
 import com.minhmc2077.aniclijava.data.OfflineStore;
 import com.minhmc2077.aniclijava.data.SyncStore;
+import com.minhmc2077.aniclijava.data.WatchHentaiRepository;
 import com.minhmc2077.aniclijava.download.AniDownloadService;
 import com.minhmc2077.aniclijava.download.PrefixedDownloaderFactory;
 import com.minhmc2077.aniclijava.net.CronetHttp;
@@ -55,11 +56,15 @@ public final class App extends Application {
     private CronetHttp http;
     private AniRepository repository;
     private MkissaRepository mkissa;
+    private WatchHentaiRepository watchHentai;
     private AniSkipApi aniSkip;
     private OfflineStore offline;
+    private OfflineStore adultOffline;
     private ImageLoader imageLoader;
     private FavouriteStore favourites;
+    private FavouriteStore adultFavourites;
     private HistoryStore history;
+    private HistoryStore adultHistory;
     private AiringStore airing;
     private SyncStore syncStore;
     private SyncManager sync;
@@ -103,11 +108,15 @@ public final class App extends Application {
         http = new CronetHttp(cronetEngine, cronetCallbacks);
         repository = new AniRepository(http);
         mkissa = new MkissaRepository(http);
+        watchHentai = new WatchHentaiRepository(http);
         aniSkip = new AniSkipApi(http);
         offline = new OfflineStore(this);
+        adultOffline = new OfflineStore(this, true);
         imageLoader = new ImageLoader(this, http, io);
         favourites = new FavouriteStore(this);
+        adultFavourites = new FavouriteStore(this, true);
         history = new HistoryStore(this);
+        adultHistory = new HistoryStore(this, true);
         airing = new AiringStore(this);
         syncStore = new SyncStore(this);
         sync = new SyncManager(this, syncStore, new MalApi(http), new AniListApi(http));
@@ -157,11 +166,19 @@ public final class App extends Application {
     }
 
     public AnimeSource animeSource() {
-        return Settings.SOURCE_MKISSA.equals(Settings.animeSource(this)) ? mkissa : repository;
+        String source = Settings.animeSource(this);
+        if (Settings.SOURCE_WATCHHENTAI.equals(source)) {
+            return watchHentai;
+        }
+        return Settings.SOURCE_MKISSA.equals(source) ? mkissa : repository;
     }
 
     public AnimeSource animeSource(String animeId) {
-        return Settings.SOURCE_MKISSA.equals(Settings.sourceOf(animeId)) ? mkissa : repository;
+        String source = Settings.sourceOf(animeId);
+        if (Settings.SOURCE_WATCHHENTAI.equals(source)) {
+            return watchHentai;
+        }
+        return Settings.SOURCE_MKISSA.equals(source) ? mkissa : repository;
     }
 
     public AniSkipApi aniSkip() {
@@ -169,7 +186,15 @@ public final class App extends Application {
     }
 
     public OfflineStore offline() {
-        return offline;
+        return offline(Settings.isAdultSource(Settings.animeSource(this)));
+    }
+
+    public OfflineStore offline(boolean adult) {
+        return adult ? adultOffline : offline;
+    }
+
+    public OfflineStore offlineFor(String animeId) {
+        return offline(Settings.isAdultId(animeId));
     }
 
     public SimpleCache mediaCache() {
@@ -210,11 +235,35 @@ public final class App extends Application {
     }
 
     public FavouriteStore favourites() {
+        return favourites(Settings.isAdultSource(Settings.animeSource(this)));
+    }
+
+    public FavouriteStore favourites(boolean adult) {
+        return adult ? adultFavourites : favourites;
+    }
+
+    public FavouriteStore normalFavourites() {
         return favourites;
     }
 
+    public FavouriteStore favouritesFor(String animeId) {
+        return favourites(Settings.isAdultId(animeId));
+    }
+
     public HistoryStore history() {
+        return history(Settings.isAdultSource(Settings.animeSource(this)));
+    }
+
+    public HistoryStore history(boolean adult) {
+        return adult ? adultHistory : history;
+    }
+
+    public HistoryStore normalHistory() {
         return history;
+    }
+
+    public HistoryStore historyFor(String animeId) {
+        return history(Settings.isAdultId(animeId));
     }
 
     public AiringStore airing() {
@@ -271,6 +320,9 @@ public final class App extends Application {
         }
         if (lower.contains("no zokoanime") || lower.contains("no sources")) {
             return getString(R.string.error_no_sources);
+        }
+        if (lower.contains("adult")) {
+            return getString(R.string.error_adult_source);
         }
         if (lower.contains("http ")) {
             return message;

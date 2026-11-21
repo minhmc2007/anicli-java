@@ -86,15 +86,15 @@ public final class CacheReport {
 
     public static CacheReport load(Context context, String source) {
         SimpleCache cache = App.get().mediaCache();
-        boolean mkissa = Settings.SOURCE_MKISSA.equals(source);
+        boolean adult = Settings.isAdultSource(source);
         Map<String, HistoryEntry> history = new HashMap<>();
-        for (HistoryEntry entry : App.get().history().getAll()) {
+        for (HistoryEntry entry : App.get().history(adult).getAll()) {
             if (!history.containsKey(entry.animeId)) {
                 history.put(entry.animeId, entry);
             }
         }
         Map<String, Anime> favourites = new HashMap<>();
-        for (Anime anime : App.get().favourites().getAll()) {
+        for (Anime anime : App.get().favourites(adult).getAll()) {
             favourites.put(anime.id, anime);
         }
 
@@ -116,8 +116,8 @@ public final class CacheReport {
                 int separator = contentId.indexOf('|');
                 animeId = separator > 0 ? contentId.substring(0, separator) : contentId;
             }
-            boolean itemMkissa = Settings.SOURCE_MKISSA.equals(Settings.sourceOf(animeId));
-            if (itemMkissa != mkissa) {
+            boolean matches = Settings.sourceOf(animeId).equals(source);
+            if (!matches) {
                 otherBytes += bytes;
                 continue;
             }
@@ -251,7 +251,7 @@ public final class CacheReport {
     private static void removeOfflineMetadata(String contentId) {
         String[] parts = contentId.split("\\|", 3);
         if (parts.length == 3) {
-            App.get().offline().removeStream(parts[0], parts[1], parts[2]);
+            App.get().offlineFor(parts[0]).removeStream(parts[0], parts[1], parts[2]);
         }
     }
 

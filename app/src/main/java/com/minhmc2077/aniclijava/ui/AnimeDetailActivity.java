@@ -98,6 +98,9 @@ public final class AnimeDetailActivity extends BaseActivity {
         if (savedInstanceState != null) {
             mode = savedInstanceState.getString(EXTRA_MODE, "sub");
         }
+        if (com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId)) {
+            mode = "sub";
+        }
         toolbar.setTitle(animeTitle);
 
         anime = new Anime(animeId, animeTitle, animePoster, "", 0, 0, 0, 0);
@@ -122,7 +125,7 @@ public final class AnimeDetailActivity extends BaseActivity {
 
             @Override
             public void onToggleFavourite() {
-                boolean favourite = App.get().favourites().toggle(anime);
+                boolean favourite = App.get().favouritesFor(animeId).toggle(anime);
                 if (adapter != null) {
                     adapter.setFavourite(favourite);
                 }
@@ -154,8 +157,11 @@ public final class AnimeDetailActivity extends BaseActivity {
         recycler.setAdapter(adapter);
         adapter.setAnime(anime);
         adapter.setDub("dub".equals(mode));
-        adapter.setFavourite(App.get().favourites().isFavourite(animeId));
-        adapter.setNotifyEnabled(App.get().airing().isEnabled(animeId));
+        boolean adult = com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId);
+        adapter.setFavourite(App.get().favouritesFor(animeId).isFavourite(animeId));
+        adapter.setNotifyEnabled(!adult && App.get().airing().isEnabled(animeId));
+        adapter.setNotifyAvailable(!adult);
+        adapter.setModeAvailable(!adult);
 
         loadDetail();
         loadEpisodes();
@@ -229,6 +235,9 @@ public final class AnimeDetailActivity extends BaseActivity {
     }
 
     private void toggleAiringAlerts() {
+        if (com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId)) {
+            return;
+        }
         boolean enabled = !App.get().airing().isEnabled(animeId);
         if (enabled && detail != null && !AiringStatus.isAiring(detail.status)) {
             Ui.toast(this, getString(R.string.airing_only_for_airing));
@@ -286,8 +295,9 @@ public final class AnimeDetailActivity extends BaseActivity {
     protected void onResume() {
         super.onResume();
         if (adapter != null) {
-            adapter.setFavourite(App.get().favourites().isFavourite(animeId));
-            adapter.setNotifyEnabled(App.get().airing().isEnabled(animeId));
+            adapter.setFavourite(App.get().favouritesFor(animeId).isFavourite(animeId));
+            adapter.setNotifyEnabled(!com.minhmc2077.aniclijava.util.Settings.isAdultId(animeId)
+                    && App.get().airing().isEnabled(animeId));
         }
     }
 

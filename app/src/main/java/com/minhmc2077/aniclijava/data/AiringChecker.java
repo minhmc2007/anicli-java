@@ -10,6 +10,7 @@ import com.minhmc2077.aniclijava.model.HistoryEntry;
 import com.minhmc2077.aniclijava.ui.AiringNotifications;
 import com.minhmc2077.aniclijava.util.AiringStatus;
 import com.minhmc2077.aniclijava.util.EpisodeNumbers;
+import com.minhmc2077.aniclijava.util.Settings;
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -44,8 +45,8 @@ public final class AiringChecker {
     public static Set<String> badges() {
         Set<String> result = new HashSet<>();
         AiringStore airing = App.get().airing();
-        HistoryStore history = App.get().history();
-        for (Anime anime : App.get().favourites().getAll()) {
+        HistoryStore history = App.get().normalHistory();
+        for (Anime anime : App.get().normalFavourites().getAll()) {
             HistoryEntry watched = history.latestForAnime(anime.id);
             if (watched == null || !airing.isAiring(anime.id)) {
                 continue;
@@ -69,17 +70,19 @@ public final class AiringChecker {
         }
         try {
             AiringStore airing = App.get().airing();
-            HistoryStore history = App.get().history();
+            HistoryStore history = App.get().normalHistory();
 
             Map<String, Anime> tracked = new LinkedHashMap<>();
-            for (Anime anime : App.get().favourites().getAll()) {
+            for (Anime anime : App.get().normalFavourites().getAll()) {
                 // The badge only makes sense once something has been watched.
-                if (history.latestForAnime(anime.id) != null) {
+                if (!Settings.isAdultId(anime.id) && history.latestForAnime(anime.id) != null) {
                     tracked.put(anime.id, anime);
                 }
             }
             for (Anime anime : airing.subscriptions()) {
-                tracked.put(anime.id, anime);
+                if (!Settings.isAdultId(anime.id)) {
+                    tracked.put(anime.id, anime);
+                }
             }
 
             for (Anime anime : tracked.values()) {
