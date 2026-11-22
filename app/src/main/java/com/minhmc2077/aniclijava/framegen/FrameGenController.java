@@ -490,6 +490,9 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private long inferStale;
     private int netWidth;
     private int netHeight;
+    private boolean lastWarp;
+    private float lastTimestep;
+    private long flowTimeNs;
     private long statsStartNs;
     private long winDecoded;
     private long winDrawn;
@@ -1290,6 +1293,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
         flowPrev = prev;
         flowNext = next;
+        flowTimeNs = System.nanoTime();
         flowValid = true;
     }
 
@@ -1692,9 +1696,12 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         boolean drawn = false;
         if (frameCount > 0) {
             if (flowValid) {
-                float timestep = (frameTimeNanos - pairStartNs) / (float) intervalNs;
-                drawWarp(flowPrev, flowNext, Math.max(0f, Math.min(1f, timestep)));
+                lastTimestep = Math.max(0f, Math.min(1f,
+                        (frameTimeNanos - pairStartNs) / (float) intervalNs));
+                lastWarp = true;
+                drawWarp(flowPrev, flowNext, lastTimestep);
             } else {
+                lastWarp = false;
                 drawQuad(simpleProgram, simplePositionHandle, simpleTexCoordHandle,
                         GLES20.GL_TEXTURE_2D, frameTexture[writeIndex], simpleTextureHandle,
                         -1, null);
@@ -1752,14 +1759,24 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 ? String.format(Locale.US, "%.1fs",
                         (System.nanoTime() - busyStartNs) / 1e9)
                 : "-";
+        final String shown;
+        if (lastWarp) {
+            final String age = flowTimeNs == 0 ? "-"
+                    : String.format(Locale.US, "%.1fs",
+                            (System.nanoTime() - flowTimeNs) / 1e9);
+            shown = String.format(Locale.US, "WARP t=%.2f flow %s",
+                    lastTimestep, age);
+        } else {
+            shown = "RAW (no flow)";
+        }
         final String text = String.format(Locale.US,
-                "%s · %s\nsrc %dx%d · net %dx%d\n"
+                "%s · %s\ndraw %s\nsrc %dx%d · net %dx%d\n"
                         + "infer %.1f ms avg %.1f · readback %.1f\n"
                         + "fail %d stale %d skip %d · busy %s\n"
-                        + "out %d fps · in %d fps · warp %d%%\n"
-                        + "target %d",
+                        + "out %d fps · in %d fps · warp %d%% · target %d",
                 Settings.FRAME_GEN_ENGINE_GL.equals(engine) ? "GL" : "FFN",
                 deviceName.isEmpty() ? "no GPU" : deviceName,
+                shown,
                 videoWidth, videoHeight, netWidth, netHeight,
                 inferLastMs, inferAvgMs, readbackMs,
                 fail, stale, skipped, busy,

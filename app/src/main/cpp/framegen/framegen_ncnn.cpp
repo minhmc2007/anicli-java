@@ -166,6 +166,18 @@ public:
                             "load param %.1f ms, model %.1f ms, %zu layers",
                             paramMs, modelMs, ffnNet.layers().size());
         inited = true;
+        // Probe: distinguishes per-layer dispatch overhead from pixel cost.
+        ncnn::Mat probe(128, 128, 6);
+        probe.fill(0.f);
+        std::vector<float> ignored;
+        const auto probeStart = std::chrono::steady_clock::now();
+        const bool probeOk = runFfn(probe, ignored);
+        __android_log_print(ANDROID_LOG_INFO, "framegen",
+                            "probe 128x128: %s %.1f ms",
+                            probeOk ? "ok" : "failed",
+                            std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - probeStart)
+                                .count());
         return true;
     }
 
@@ -299,7 +311,13 @@ private:
                                 "extract start %dx%dx%d", in.w, in.h, in.c);
         }
         ncnn::Extractor ex = ffnNet.create_extractor();
+        if (log) {
+            __android_log_print(ANDROID_LOG_INFO, "framegen", "extractor ready");
+        }
         ex.input(ffnIn.c_str(), in);
+        if (log) {
+            __android_log_print(ANDROID_LOG_INFO, "framegen", "input uploaded");
+        }
         ncnn::Mat flow;
         if (ex.extract(ffnOut.c_str(), flow)) {
             __android_log_print(ANDROID_LOG_ERROR, "framegen", "extract failed");
