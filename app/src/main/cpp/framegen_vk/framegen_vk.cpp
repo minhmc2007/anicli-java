@@ -996,6 +996,7 @@ static bool createOutput(Engine& e) {
 }
 
 static void clearImages(Engine& e) {
+    vkResetCommandBuffer(e.cmd, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(e.cmd, &bi);

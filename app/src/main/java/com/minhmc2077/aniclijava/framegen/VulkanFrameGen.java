@@ -11,6 +11,7 @@ import java.io.InputStream;
 final class VulkanFrameGen {
     private static final String TAG = "framegen";
     private static final boolean LOADED;
+    private static Boolean supported;
     private static final String[] SHADERS = {
             "full", "luma", "search", "block", "pick", "refine", "tile",
             "pixel_flow", "pixel_sad", "warp", "copy", "present"
@@ -31,7 +32,10 @@ final class VulkanFrameGen {
     }
 
     static boolean supported() {
-        return LOADED && nativeSupported();
+        if (supported == null) {
+            supported = LOADED && nativeSupported();
+        }
+        return supported;
     }
 
     static long open(Context context) {
