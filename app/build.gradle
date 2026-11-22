@@ -31,6 +31,7 @@ def configString = { value ->
 android {
     namespace 'com.minhmc2077.aniclijava'
     compileSdk 37
+    ndkVersion '30.0.16248370'
 
     // Fixed debug key so consecutive CI builds are signed identically.
     signingConfigs {
@@ -59,6 +60,12 @@ android {
 
         vectorDrawables {
             useSupportLibrary true
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=c++_static'
+            }
         }
     }
 
@@ -91,6 +98,12 @@ android {
 
     buildFeatures {
         buildConfig true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/framegen_vk/CMakeLists.txt'
+        }
     }
 
     androidResources {

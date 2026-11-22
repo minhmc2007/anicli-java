@@ -421,7 +421,7 @@ public final class PlayerActivity extends BaseActivity {
             player.setVideoSurfaceView(frameGenSurface);
             return;
         }
-        frameGen = new FrameGenController(frameGenSurface, new FrameGenController.Listener() {
+        frameGen = FrameGenController.create(frameGenSurface, new FrameGenController.Listener() {
             @Override
             public void onInputSurface(@NonNull Surface surface) {
                 if (player != null) {
