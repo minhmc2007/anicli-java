@@ -552,7 +552,8 @@ static bool createExternalImage(Engine& e, Image& image, int width, int height) 
     VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     ci.pNext = &external;
     ci.imageType = VK_IMAGE_TYPE_2D;
-    ci.format = RGBA;
+    VkFormat ahbFormat = format.format != VK_FORMAT_UNDEFINED ? format.format : RGBA;
+    ci.format = ahbFormat;
     ci.extent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
     ci.mipLevels = 1;
     ci.arrayLayers = 1;
@@ -590,7 +591,7 @@ static bool createExternalImage(Engine& e, Image& image, int width, int height) 
     VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     vi.image = image.image;
     vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    vi.format = RGBA;
+    vi.format = ahbFormat;
     vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     if (vkCreateImageView(e.device, &vi, nullptr, &image.view) != VK_SUCCESS) {
         return false;
