@@ -1318,7 +1318,6 @@ static bool createDevice(Engine& e) {
             e.device = VK_NULL_HANDLE;
             continue;
         }
-        vkGetDeviceQueue(e.device, chosen, 0, &e.queue);
         LOGI("device %s, API %u.%u.%u, driver %u", props.deviceName,
              VK_VERSION_MAJOR(props.apiVersion), VK_VERSION_MINOR(props.apiVersion),
              VK_VERSION_PATCH(props.apiVersion), props.driverVersion);
@@ -1445,6 +1444,11 @@ static Engine* createEngine() {
     name = reinterpret_cast<PFN_##name>(vkGetDeviceProcAddr(e->device, #name));
     VK_DEVICE_FUNCS(VK_LOAD_DEVICE)
 #undef VK_LOAD_DEVICE
+#define VK_CHECK_DEVICE(name) \
+    if (!name) LOGE("missing entry point %s", #name);
+    VK_DEVICE_FUNCS(VK_CHECK_DEVICE)
+#undef VK_CHECK_DEVICE
+    vkGetDeviceQueue(e->device, e->queueFamily, 0, &e->queue);
 
     VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     sampler.magFilter = VK_FILTER_LINEAR;
