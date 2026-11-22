@@ -1500,6 +1500,18 @@ Java_com_minhmc2077_aniclijava_framegen_VulkanFrameGen_nativeSupported(JNIEnv*, 
     if (!createInstance(&instance)) {
         return JNI_FALSE;
     }
+#define VK_LOAD_INSTANCE(name) \
+    name = reinterpret_cast<PFN_##name>(gipa(instance, #name));
+    VK_INSTANCE_FUNCS(VK_LOAD_INSTANCE)
+#undef VK_LOAD_INSTANCE
+    if (!vkEnumeratePhysicalDevices || !vkGetPhysicalDeviceProperties
+            || !vkEnumerateDeviceExtensionProperties) {
+        LOGE("missing Vulkan instance entry points");
+        if (vkDestroyInstance) {
+            vkDestroyInstance(instance, nullptr);
+        }
+        return JNI_FALSE;
+    }
     uint32_t count = 0;
     vkEnumeratePhysicalDevices(instance, &count, nullptr);
     std::vector<VkPhysicalDevice> devices(count);
@@ -1529,7 +1541,9 @@ Java_com_minhmc2077_aniclijava_framegen_VulkanFrameGen_nativeSupported(JNIEnv*, 
             break;
         }
     }
-    vkDestroyInstance(instance, nullptr);
+    if (vkDestroyInstance) {
+        vkDestroyInstance(instance, nullptr);
+    }
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 
