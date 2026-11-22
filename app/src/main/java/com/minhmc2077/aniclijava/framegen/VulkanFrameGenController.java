@@ -110,6 +110,7 @@ final class VulkanFrameGenController implements FrameGenController,
     private boolean paused;
     private boolean hasFrame;
     private boolean newFrame;
+    private boolean fboChecked;
     private int targetFps = 60;
     private long intervalNs = 41_666_667L;
     private long lastPtsNs;
@@ -322,6 +323,7 @@ final class VulkanFrameGenController implements FrameGenController,
         videoWidth = requestedWidth;
         videoHeight = requestedHeight;
         frameCount = 0;
+        fboChecked = false;
         writeIndex = RING - 1;
         lastPtsNs = 0;
         pairStartNs = 0;
@@ -389,6 +391,13 @@ final class VulkanFrameGenController implements FrameGenController,
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, frameFbo[0]);
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
                 GLES20.GL_TEXTURE_2D, slotTexture[index], 0);
+        if (!fboChecked) {
+            fboChecked = true;
+            int status = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER);
+            if (status != GLES20.GL_FRAMEBUFFER_COMPLETE) {
+                Log.w(TAG, "slot fbo incomplete 0x" + Integer.toHexString(status));
+            }
+        }
         GLES20.glViewport(0, 0, videoWidth, videoHeight);
         GLES20.glClearColor(0f, 0f, 0f, 1f);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
