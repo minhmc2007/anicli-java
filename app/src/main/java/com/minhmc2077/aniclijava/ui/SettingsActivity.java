@@ -547,6 +547,7 @@ public final class SettingsActivity extends BaseActivity {
         TextView fpsValue = findViewById(R.id.frame_gen_fps_value);
         View engineRow = findViewById(R.id.frame_gen_engine_row);
         TextView engineValue = findViewById(R.id.frame_gen_engine_value);
+        SwitchCompat ffnOnlySwitch = findViewById(R.id.frame_gen_ffn_only_switch);
         boolean enabled = Settings.frameGenEnabled(this);
         boolean ffn = NcnnFrameEngine.modelBundled(this);
         fpsRow.setVisibility(enabled ? View.VISIBLE : View.GONE);
@@ -555,6 +556,10 @@ public final class SettingsActivity extends BaseActivity {
                 Settings.frameGenTargetFps(this)));
         engineValue.setText(engineLabel(ffn ? Settings.frameGenEngine(this)
                 : Settings.FRAME_GEN_ENGINE_GL));
+        ffnOnlySwitch.setChecked(Settings.ffnOnly(this));
+        ffnOnlySwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
+                Settings.setFfnOnly(this, isChecked));
+        updateFfnOnlyRow();
         frameGenSwitch.setChecked(enabled);
         frameGenSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
@@ -565,6 +570,15 @@ public final class SettingsActivity extends BaseActivity {
         });
         fpsRow.setOnClickListener(v -> pickFrameGenFps(fpsValue));
         engineRow.setOnClickListener(v -> pickFrameGenEngine(engineValue));
+    }
+
+    private void updateFfnOnlyRow() {
+        boolean show = Settings.frameGenEnabled(this)
+                && NcnnFrameEngine.modelBundled(this)
+                && Settings.FRAME_GEN_ENGINE_FFN.equals(Settings.frameGenEngine(this));
+        int visibility = show ? View.VISIBLE : View.GONE;
+        findViewById(R.id.frame_gen_ffn_only_row).setVisibility(visibility);
+        findViewById(R.id.frame_gen_ffn_only_hint).setVisibility(visibility);
     }
 
     private String engineLabel(String engine) {
@@ -585,6 +599,7 @@ public final class SettingsActivity extends BaseActivity {
                             : Settings.FRAME_GEN_ENGINE_GL;
                     Settings.setFrameGenEngine(this, engine);
                     engineValue.setText(engineLabel(engine));
+                    updateFfnOnlyRow();
                 })
                 .show();
     }
@@ -607,6 +622,7 @@ public final class SettingsActivity extends BaseActivity {
         findViewById(R.id.frame_gen_engine_row).setVisibility(
                 enabled && NcnnFrameEngine.modelBundled(this)
                         ? View.VISIBLE : View.GONE);
+        updateFfnOnlyRow();
     }
 
     private void pickFrameGenFps(TextView fpsValue) {

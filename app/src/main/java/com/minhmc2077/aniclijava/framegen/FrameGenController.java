@@ -479,6 +479,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private Handler ncnnHandler;
     private boolean ncnnBusy;
     private boolean busyWarned;
+    private boolean ffnOnly;
     private long busyStartNs;
 
     private volatile TextView debugView;
@@ -490,7 +491,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
     private long inferStale;
     private int netWidth;
     private int netHeight;
-    private boolean lastWarp;
+    private int lastDraw;
     private float lastTimestep;
     private long flowTimeNs;
     private long statsStartNs;
@@ -622,6 +623,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         engine = NcnnFrameEngine.modelBundled(view.getContext())
                 ? Settings.frameGenEngine(view.getContext())
                 : Settings.FRAME_GEN_ENGINE_GL;
+        ffnOnly = Settings.ffnOnly(view.getContext());
         thread = new HandlerThread("framegen");
         thread.start();
         handler = new Handler(thread.getLooper());
@@ -1190,7 +1192,6 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             }
             return;
         }
-        flowValid = false;
         final int w = videoWidth;
         final int h = videoHeight;
         final int lumaW = w / 4;
@@ -1258,14 +1259,15 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         }
         final int lumaW = w / 4;
         final int lumaH = h / 4;
-        final int currentPrev = (writeIndex - 1 + RING) % RING;
-        if (!ok || prev != currentPrev || next != writeIndex
-                || w != videoWidth || h != videoHeight
+        if (!ok || w != videoWidth || h != videoHeight
                 || flow.length != lumaW * lumaH * 2) {
-            if (ok) {
-                inferStale++;
-            }
             return;
+        }
+        // A late result is still the freshest flow we have; use it on the
+        // current pair instead of freezing the output.
+        final int currentPrev = (writeIndex - 1 + RING) % RING;
+        if (prev != currentPrev || next != writeIndex) {
+            inferStale++;
         }
         // Pack with the encoding the GL warp shader decodes.
         ByteBuffer packed = uploadBuffer(flowUpload, lumaW * lumaH * 4);
@@ -1291,8 +1293,8 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, lumaW, lumaH,
                 GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, sadBuf);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-        flowPrev = prev;
-        flowNext = next;
+        flowPrev = (writeIndex - 1 + RING) % RING;
+        flowNext = writeIndex;
         flowTimeNs = System.nanoTime();
         flowValid = true;
     }
@@ -1694,23 +1696,35 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
         boolean drawn = false;
+        lastDraw = 0;
         if (frameCount > 0) {
             if (flowValid) {
                 lastTimestep = Math.max(0f, Math.min(1f,
                         (frameTimeNanos - pairStartNs) / (float) intervalNs));
-                lastWarp = true;
+                lastDraw = 2;
                 drawWarp(flowPrev, flowNext, lastTimestep);
-            } else {
-                lastWarp = false;
+                drawn = true;
+            } else if (!neural()) {
+                // GL engine: show the decoded frame until motion is ready.
+                lastDraw = 1;
                 drawQuad(simpleProgram, simplePositionHandle, simpleTexCoordHandle,
                         GLES20.GL_TEXTURE_2D, frameTexture[writeIndex], simpleTextureHandle,
                         -1, null);
+                drawn = true;
             }
+        }
+        // FFN mode never presents a raw decoded frame: hold the last warp (or
+        // stay black) until flow for the current pair arrives.
+        if (!drawn && !neural()) {
+            lastDraw = 1;
+            drawQuad(program, positionHandle, texCoordHandle, GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+                    textureId, textureHandle, texMatrixHandle, texMatrix);
             drawn = true;
         }
         if (!drawn) {
-            drawQuad(program, positionHandle, texCoordHandle, GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
-                    textureId, textureHandle, texMatrixHandle, texMatrix);
+            updateDebug(frameTimeNanos);
+            EGL14.eglMakeCurrent(eglDisplay, eglPbuffer, eglPbuffer, eglContext);
+            return;
         }
 
         EGLExt.eglPresentationTimeANDROID(eglDisplay, eglWindow, frameTimeNanos);
@@ -1720,7 +1734,7 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
             return;
         }
         winDrawn++;
-        if (flowValid) {
+        if (lastDraw == 2) {
             winWarp++;
         }
         updateDebug(frameTimeNanos);
@@ -1760,14 +1774,17 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                         (System.nanoTime() - busyStartNs) / 1e9)
                 : "-";
         final String shown;
-        if (lastWarp) {
+        if (lastDraw == 2) {
             final String age = flowTimeNs == 0 ? "-"
                     : String.format(Locale.US, "%.1fs",
                             (System.nanoTime() - flowTimeNs) / 1e9);
-            shown = String.format(Locale.US, "WARP t=%.2f flow %s",
-                    lastTimestep, age);
+            shown = String.format(Locale.US, "WARP t=%.2f flow %s%s",
+                    lastTimestep, age,
+                    ffnOnly && neural() ? " · ffn-only" : "");
+        } else if (lastDraw == 1) {
+            shown = "RAW (gl engine)";
         } else {
-            shown = "RAW (no flow)";
+            shown = "HOLD last · no flow";
         }
         final String text = String.format(Locale.US,
                 "%s · %s\ndraw %s\nsrc %dx%d · net %dx%d\n"
@@ -1782,6 +1799,10 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
                 fail, stale, skipped, busy,
                 outFps, inFps, warpPct, targetFps);
         mainHandler.post(() -> view.setText(text));
+    }
+
+    private boolean neural() {
+        return !Settings.FRAME_GEN_ENGINE_GL.equals(engine);
     }
 
     private void drawQuad(int programId, int posHandle, int coordHandle, int target,
@@ -1818,9 +1839,12 @@ public final class FrameGenController implements Choreographer.FrameCallback, Su
         GLES20.glUniform1i(warpSadHandle, 3);
         GLES20.glUniform1f(warpTimestepHandle, timestep);
         GLES20.glUniform2f(warpStepHandle, 1f / videoWidth, 1f / videoHeight);
-        GLES20.glUniform2f(warpBadHandle, BAD_LO, BAD_HI);
+        // FFN-only debug: force the mix factor to zero so the raw fallback is
+        // never shown, only the warped result.
+        final boolean pure = ffnOnly && neural();
+        GLES20.glUniform2f(warpBadHandle, pure ? 2f : BAD_LO, pure ? 2f : BAD_HI);
         GLES20.glUniform2f(warpDisHandle, DIS_LO, DIS_HI);
-        GLES20.glUniform1f(warpDisWHandle, DIS_W);
+        GLES20.glUniform1f(warpDisWHandle, pure ? 0f : DIS_W);
         drawFullQuad();
     }
 

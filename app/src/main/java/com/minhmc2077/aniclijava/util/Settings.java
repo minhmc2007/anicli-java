@@ -21,6 +21,7 @@ public final class Settings {
     private static final String KEY_FRAME_GEN = "frame_gen";
     private static final String KEY_FRAME_GEN_FPS = "frame_gen_fps";
     private static final String KEY_FRAME_GEN_ENGINE = "frame_gen_engine";
+    private static final String KEY_FFN_ONLY = "ffn_only";
 
     public static final int FRAME_GEN_FPS_DEFAULT = 60;
 
@@ -175,6 +176,15 @@ public final class Settings {
                 ? engine
                 : FRAME_GEN_ENGINE_GL;
         prefs(context).edit().putString(KEY_FRAME_GEN_ENGINE, value).apply();
+    }
+
+    /** FFN debug output: pure warped frames, raw pixel fallback disabled. */
+    public static boolean ffnOnly(Context context) {
+        return prefs(context).getBoolean(KEY_FFN_ONLY, false);
+    }
+
+    public static void setFfnOnly(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(KEY_FFN_ONLY, enabled).apply();
     }
 
     public static String animeSource(Context context) {

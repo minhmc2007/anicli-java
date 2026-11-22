@@ -166,6 +166,8 @@
     <string name="settings_frame_gen_engine">Engine</string>
     <string name="settings_frame_gen_engine_gl">GPU warp (built-in, default)</string>
     <string name="settings_frame_gen_engine_ffn">FastFlowNet (neural flow, best quality)</string>
+    <string name="settings_frame_gen_ffn_only">FFN only (debug)</string>
+    <string name="settings_frame_gen_ffn_only_hint">Shows pure network output: the raw pixel fallback is disabled. If this freezes or shows smears, the flow is wrong or missing.</string>
     <string name="settings_frame_gen_fps_60">60 fps</string>
     <string name="settings_frame_gen_fps_120">120 fps</string>
     <string name="settings_frame_gen_fps_120_title">120 fps can look worse</string>
