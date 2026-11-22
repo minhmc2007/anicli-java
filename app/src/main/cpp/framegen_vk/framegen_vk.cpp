@@ -816,7 +816,9 @@ static bool createSwapchain(Engine& e) {
     ci.imageArrayLayers = 1;
     ci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    ci.preTransform = caps.currentTransform;
+    // Render upright like GL does; letting the compositor rotate instead of
+    // pre-rotating keeps the picture aligned with the app's landscape window.
+    ci.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     ci.compositeAlpha = alpha;
     ci.presentMode = VK_PRESENT_MODE_FIFO_KHR;
     ci.clipped = VK_TRUE;
@@ -843,8 +845,9 @@ static bool createSwapchain(Engine& e) {
     }
     e.surfaceWidth = static_cast<int>(extent.width);
     e.surfaceHeight = static_cast<int>(extent.height);
-    LOGI("swapchain %ux%u %s x%u present",
-         extent.width, extent.height, e.swapBgra ? "BGRA" : "RGBA", images);
+    LOGI("swapchain %ux%u %s x%u transform %u/%u present",
+         extent.width, extent.height, e.swapBgra ? "BGRA" : "RGBA", images,
+         caps.currentTransform, ci.preTransform);
     return true;
 }
 
